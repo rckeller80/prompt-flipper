@@ -56,6 +56,16 @@ The publisher name a tester sees in the install dialog.
 Thumbprint of an existing code signing certificate to sign with. Without it the script finds
 or creates a development certificate in Cert:\CurrentUser\My.
 
+.PARAMETER IdentityName
+Package identity name written into the manifest. Defaults to PromptFlipper for a test
+package. A Store upload takes Package/Identity/Name from the Partner Center Product identity
+page.
+
+.PARAMETER StoreUpload
+Builds the Store upload package: the manifest carries the Partner Center identity given in
+-IdentityName, -Publisher and -PublisherDisplayName, and the package is left unsigned because
+Microsoft signs it after certification (ADR-002). No certificate is created or exported.
+
 .EXAMPLE
 .\Build-PromptFlipperPackage.ps1
 
@@ -66,6 +76,12 @@ and SHA-256.
 .\Build-PromptFlipperPackage.ps1 -SkipPublish -PackageVersion '1.0.1.0'
 
 Re-packages the executable already published, under a higher package version.
+
+.EXAMPLE
+.\Build-PromptFlipperPackage.ps1 -StoreUpload -IdentityName '12345Publisher.PromptFlipper' -Publisher 'CN=00000000-0000-0000-0000-000000000000' -PublisherDisplayName 'Publisher' -PackageVersion '1.0.3.0'
+
+Builds the unsigned Store upload package. The three identity values shown are labelled
+examples; copy the real ones from Partner Center Product identity.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
@@ -87,7 +103,12 @@ param(
     [string]$PublisherDisplayName = 'Prompt Flipper Development',
 
     [ValidatePattern('^[0-9A-Fa-f]{40}$')]
-    [string]$CertificateThumbprint
+    [string]$CertificateThumbprint,
+
+    [ValidatePattern('^[A-Za-z0-9.\-]{3,50}$')]
+    [string]$IdentityName = 'PromptFlipper',
+
+    [switch]$StoreUpload
 )
 
 Set-StrictMode -Version Latest
@@ -335,7 +356,19 @@ $fullPublishPath = [System.IO.Path]::GetFullPath($PublishPath)
 $fullOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 $packagePath = Join-Path -Path $fullOutputPath -ChildPath "PromptFlipper_$PackageVersion`_x64.msix"
 
-if (-not $PSCmdlet.ShouldProcess($packagePath, 'Pack and sign Prompt Flipper as MSIX')) {
+if ($StoreUpload) {
+    # A Store upload carries the Partner Center identity and no local signature. The defaults
+    # are test values, so leaving any of them in place would build a package Partner Center rejects.
+    if ($IdentityName -eq 'PromptFlipper' -or $Publisher -eq 'CN=Prompt Flipper Development' -or $PublisherDisplayName -eq 'Prompt Flipper Development') {
+        throw '-StoreUpload needs -IdentityName, -Publisher and -PublisherDisplayName copied from Partner Center Product identity.'
+    }
+    if ($PSBoundParameters.ContainsKey('CertificateThumbprint')) {
+        throw '-StoreUpload builds an unsigned package; do not pass -CertificateThumbprint (ADR-002).'
+    }
+    $packagePath = Join-Path -Path $fullOutputPath -ChildPath "PromptFlipper_$PackageVersion`_x64_store.msix"
+}
+
+if (-not $PSCmdlet.ShouldProcess($packagePath, 'Pack Prompt Flipper as MSIX')) {
     return
 }
 
@@ -352,8 +385,14 @@ $published = & $publishScript -OutputPath $fullPublishPath -InspectOnly:$SkipPub
 $executable = Get-Item -LiteralPath $published.Path
 
 $makeAppx = Resolve-PackagingTool -Name 'makeappx.exe'
-$signTool = Resolve-PackagingTool -Name 'signtool.exe'
-$certificate = Get-SigningCertificate -Subject $Publisher -Thumbprint $CertificateThumbprint
+if ($StoreUpload) {
+    $manifestPublisher = $Publisher
+}
+else {
+    $signTool = Resolve-PackagingTool -Name 'signtool.exe'
+    $certificate = Get-SigningCertificate -Subject $Publisher -Thumbprint $CertificateThumbprint
+    $manifestPublisher = $certificate.Subject
+}
 
 $stagingPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("PromptFlipperPackage_" + [guid]::NewGuid().ToString('n'))
 try {
@@ -374,7 +413,7 @@ try {
     }
 
     $manifest = Get-Content -LiteralPath $manifestTemplate -Raw
-    $manifest = $manifest.Replace('{PUBLISHER}', $certificate.Subject).Replace('{PUBLISHER_DISPLAY_NAME}', $PublisherDisplayName).Replace('{VERSION}', $PackageVersion)
+    $manifest = $manifest.Replace('{IDENTITY_NAME}', $IdentityName).Replace('{PUBLISHER}', $manifestPublisher).Replace('{PUBLISHER_DISPLAY_NAME}', $PublisherDisplayName).Replace('{VERSION}', $PackageVersion)
     Set-Content -LiteralPath (Join-Path -Path $stagingPath -ChildPath 'AppxManifest.xml') -Value $manifest -Encoding utf8
 
     [System.IO.Directory]::CreateDirectory($fullOutputPath) | Out-Null
@@ -386,9 +425,11 @@ try {
         'pack', '/d', $stagingPath, '/p', $packagePath, '/o'
     ) | Write-Verbose
 
-    Invoke-PackagingTool -FilePath $signTool -Activity 'signtool sign' -ArgumentList @(
-        'sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, $packagePath
-    ) | Write-Verbose
+    if (-not $StoreUpload) {
+        Invoke-PackagingTool -FilePath $signTool -Activity 'signtool sign' -ArgumentList @(
+            'sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, $packagePath
+        ) | Write-Verbose
+    }
 }
 finally {
     if (Test-Path -LiteralPath $stagingPath) {
@@ -398,8 +439,13 @@ finally {
 
 # The public certificate is what a tester imports to trust the package. It carries no private
 # key and is not a secret.
-$certificatePath = Join-Path -Path $fullOutputPath -ChildPath 'PromptFlipper.cer'
-Export-Certificate -Cert $certificate -FilePath $certificatePath -Type CERT | Out-Null
+$certificatePath = $null
+$certificateThumbprintOut = $null
+if (-not $StoreUpload) {
+    $certificatePath = Join-Path -Path $fullOutputPath -ChildPath 'PromptFlipper.cer'
+    Export-Certificate -Cert $certificate -FilePath $certificatePath -Type CERT | Out-Null
+    $certificateThumbprintOut = $certificate.Thumbprint
+}
 
 $package = Get-Item -LiteralPath $packagePath
 $packageHash = Get-FileHash -LiteralPath $packagePath -Algorithm SHA256
@@ -409,8 +455,10 @@ $packageHash = Get-FileHash -LiteralPath $packagePath -Algorithm SHA256
     SizeMB                = [math]::Round($package.Length / 1MB, 1)
     Sha256                = $packageHash.Hash
     PackageVersion        = $PackageVersion
-    Publisher             = $certificate.Subject
-    CertificateThumbprint = $certificate.Thumbprint
+    IdentityName          = $IdentityName
+    Publisher             = $manifestPublisher
+    Signed                = (-not $StoreUpload)
+    CertificateThumbprint = $certificateThumbprintOut
     CertificatePath       = $certificatePath
     BuiltUtc              = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')
 }

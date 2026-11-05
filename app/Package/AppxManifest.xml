@@ -2,8 +2,10 @@
 <!--
   Package manifest template for Prompt Flipper.
 
-  Three labelled placeholders are substituted by app\Build-PromptFlipperPackage.ps1 and are
-  never edited to literal values here: {PUBLISHER} takes the signing certificate subject,
+  Four labelled placeholders are substituted by app\Build-PromptFlipperPackage.ps1 and are
+  never edited to literal values here: {IDENTITY_NAME} takes the package name (the Partner
+  Center Product identity name for a Store upload), {PUBLISHER} takes the signing certificate
+  subject or the Partner Center publisher,
   {PUBLISHER_DISPLAY_NAME} takes the name a tester sees, {VERSION} takes the four-part
   package version. A manifest whose Publisher does not match the certificate subject exactly
   is rejected at install time, so the script owns both values.
@@ -19,7 +21,7 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="PromptFlipper"
+    Name="{IDENTITY_NAME}"
     Publisher="{PUBLISHER}"
     Version="{VERSION}"
     ProcessorArchitecture="x64" />
