@@ -252,7 +252,7 @@ public sealed class MainFormNavigationTests
       allText.AppendLine(text.Text);
     }
     foreach (var instruction in new[] { "Windows encryption", "Ctrl+Shift+O",
-      "Wrap", "Text size", "De-Sanitize", "Attach Folder", "Trash", "Author: Rok", "Licence: MIT" })
+      "Wrap", "Text size", "De-Sanitize", "Attach Folder", "Trash", "Author: RC Keller", "Licence: MIT" })
       Assert.Contains(instruction, allText.ToString());
     Assert.Contains("Add file from template", allText.ToString());
     foreach (var obsolete in new[] { "Select New", "Copy reviewed result", "Preferences", "one card file only" })
