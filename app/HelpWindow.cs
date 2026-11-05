@@ -201,16 +201,17 @@ internal sealed class HelpWindow : Form
     ForeColor = palette.Text;
     KeyPreview = true;
 
-    var content = new TextBox
+    var content = new RichTextBox
     {
       AccessibleName = "Help topic",
       BackColor = palette.Surface,
       BorderStyle = BorderStyle.FixedSingle,
+      DetectUrls = false,
       Dock = DockStyle.Fill,
       ForeColor = palette.Text,
       Multiline = true,
       ReadOnly = true,
-      ScrollBars = ScrollBars.Vertical,
+      ScrollBars = RichTextBoxScrollBars.Vertical,
       TabStop = true,
       TabIndex = 0,
       WordWrap = true
@@ -249,8 +250,17 @@ internal sealed class HelpWindow : Form
     {
       if (args.Node?.Tag is not HelpEntry entry) return;
       content.AccessibleName = entry.Title + " help";
-      content.Text = entry.Body.ReplaceLineEndings(Environment.NewLine);
-      content.Select(0, 0);
+      // RichTextBox stores line breaks as a single \n, so highlight offsets match this text.
+      content.Text = entry.Body.ReplaceLineEndings("\n");
+      var first = -1;
+      foreach (var (start, length) in PromptFlipper.TextSearch.Ranges(content.Text, search.Text))
+      {
+        content.Select(start, length);
+        content.SelectionBackColor = SystemColors.Highlight;
+        content.SelectionColor = SystemColors.HighlightText;
+        if (first < 0 || start < first) first = start;
+      }
+      content.Select(Math.Max(first, 0), 0);
       content.ScrollToCaret();
     };
 
