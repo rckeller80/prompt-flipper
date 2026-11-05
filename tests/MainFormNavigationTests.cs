@@ -206,10 +206,11 @@ public sealed class MainFormNavigationTests
   {
     var controls = Descendants(help).ToArray();
     Assert.Empty(controls.OfType<System.Windows.Forms.ComboBox>());
-    var text = Assert.Single(controls.OfType<System.Windows.Forms.TextBox>(), box => box.ReadOnly);
+    Assert.Empty(controls.OfType<System.Windows.Forms.TextBox>().Where(box => box.ReadOnly));
+    var text = Assert.Single(controls.OfType<System.Windows.Forms.RichTextBox>(), box => box.ReadOnly);
     Assert.Single(controls.OfType<System.Windows.Forms.TextBox>(), box => box.AccessibleName == "Search help");
     Assert.True(text.WordWrap);
-    Assert.Equal(System.Windows.Forms.ScrollBars.Vertical, text.ScrollBars);
+    Assert.Equal(System.Windows.Forms.RichTextBoxScrollBars.Vertical, text.ScrollBars);
     var topics = Assert.Single(controls.OfType<System.Windows.Forms.TreeView>());
     Assert.Equal("Help topics", topics.AccessibleName);
     Assert.True(topics.Focused);

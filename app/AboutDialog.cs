@@ -102,7 +102,7 @@ internal sealed class AboutDialog : Form
     AddField(fields, 5, "Source:", SourceRepository);
     AddField(fields, 6, "Help:", HelpRoute);
 
-    fields.Controls.Add(NewLabel("Support:"), 0, 7);
+    fields.Controls.Add(NewLabel("Donate:"), 0, 7);
     fields.Controls.Add(donationLink, 1, 7);
 
     var buttons = new FlowLayoutPanel
@@ -169,7 +169,7 @@ internal sealed class AboutDialog : Form
     Author: {Author}
     Licence: {License}
     Source: {SourceRepository}
-    Support: {SupportLink.Url}
+    Donate: {SupportLink.Url}
     """;
 
   private static string ReadVersion()

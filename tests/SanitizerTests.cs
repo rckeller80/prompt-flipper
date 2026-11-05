@@ -110,6 +110,9 @@ public sealed class SanitizerTests
         // Two words in different fields match; a word absent from every field does not.
         Assert.True(TextSearch.Matches("alpha BETA", ["alpha one", "beta two"]));
         Assert.False(TextSearch.Matches("alpha gamma", ["alpha one", "beta two"]));
+        // Highlight ranges: every occurrence of every word, case-insensitive.
+        Assert.Equal([(0, 5), (10, 5), (6, 3)], TextSearch.Ranges("Alpha one alpha", "alpha one").ToArray());
+        Assert.Empty(TextSearch.Ranges("text", ""));
         var rules = new[] { new SanitizerRule("alpha", "beta-value", false), new SanitizerRule("alpha2", "beta-secret") };
         Assert.Equal("alpha", string.Join(",", Sanitizer.FilterRules(rules, "alpha beta", false).Select(rule => rule.Name)));
 

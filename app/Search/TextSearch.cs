@@ -20,6 +20,18 @@ public static class TextSearch
         return terms.All(term => values.Any(value => value!.Contains(term, StringComparison.OrdinalIgnoreCase)));
     }
 
+    // Every occurrence of every query word in text, as (start, length), for highlighting.
+    public static IEnumerable<(int Start, int Length)> Ranges(string? text, string? query)
+    {
+        if (string.IsNullOrEmpty(text)) yield break;
+        foreach (var term in Terms(query))
+        {
+            for (var at = text.IndexOf(term, StringComparison.OrdinalIgnoreCase); at >= 0;
+                 at = text.IndexOf(term, at + term.Length, StringComparison.OrdinalIgnoreCase))
+                yield return (at, term.Length);
+        }
+    }
+
     public static IEnumerable<T> Filter<T>(IEnumerable<T> items, string? query, Func<T, IEnumerable<string?>> fields) =>
         Terms(query).Length == 0 ? items : items.Where(item => Matches(query, fields(item)));
 }
