@@ -1,0 +1,35 @@
+name: Build portable executable
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish portable executable
+        shell: powershell
+        run: ./app/Publish-PromptFlipper.ps1 -OutputPath ./app/publish
+      - name: Upload unsigned executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: PromptFlipper-win-x64
+          path: app/publish/PromptFlipper.exe
+          if-no-files-found: error
+          retention-days: 14

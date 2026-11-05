@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Package manifest template for Prompt Flipper.
+
+  Three labelled placeholders are substituted by app\Build-PromptFlipperPackage.ps1 and are
+  never edited to literal values here: {PUBLISHER} takes the signing certificate subject,
+  {PUBLISHER_DISPLAY_NAME} takes the name a tester sees, {VERSION} takes the four-part
+  package version. A manifest whose Publisher does not match the certificate subject exactly
+  is rejected at install time, so the script owns both values.
+
+  The application is an ordinary Win32 executable carried in an MSIX container, which is what
+  Windows.FullTrustApplication and the runFullTrust capability declare. Nothing in the
+  application is rewritten for packaging.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="PromptFlipper"
+    Publisher="{PUBLISHER}"
+    Version="{VERSION}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Prompt Flipper</DisplayName>
+    <PublisherDisplayName>{PUBLISHER_DISPLAY_NAME}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="PromptFlipper" Executable="PromptFlipper.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Prompt Flipper"
+        Description="Flip through prompt cards and copy the one you need."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

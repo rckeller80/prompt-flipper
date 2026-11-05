@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>PromptFlipper</AssemblyName>
+    <Product>Prompt Flipper</Product>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.1</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <FileVersion>1.0.1.0</FileVersion>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Self-contained so the executable runs where the .NET Desktop Runtime cannot be
+         installed. The runtime is then pinned into the file and is serviced by rebuilding,
+         not by Windows Update: see docs/release-packaging.md. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Windows Forms is not trim compatible: trimming removes types the designer surface
+         resolves by reflection, and the failure appears at runtime rather than at build. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <!-- Sets the icon Explorer and the shell read off the executable itself. The source
+         artwork and the sizes this file was cut from are in artifacts/IconPack. -->
+    <ApplicationIcon>PromptFlipper.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Supplied command artwork retains its native size for each display scale. -->
+    <EmbeddedResource Include="..\artifacts\assets\toolbar\*.png" LogicalName="Assets.%(Filename).png" />
+    <!-- The Settings command (formerly Sanitizer Tool) uses the supplied gear artwork. -->
+    <EmbeddedResource Include="..\artifacts\assets\settings_*.png" LogicalName="Assets.%(Filename).png" />
+    <!-- The window and taskbar icon is loaded at runtime rather than taken from the
+         executable, because ApplicationIcon only reaches the shell. Embedding keeps it
+         inside the single-file publish. -->
+    <EmbeddedResource Include="PromptFlipper.ico" LogicalName="PromptFlipper.ico" />
+    <!-- One parameter file per search site; the control template is Search/SearchProfile.cs. -->
+    <EmbeddedResource Include="Search\*.json" LogicalName="Search.%(Filename).json" />
+    <!-- Sanitize and De-Sanitize button and comic success artwork. The 512 masters are not shipped. -->
+    <EmbeddedResource Include="..\artifacts\assets\quick_icons\*sanitize_button_*.png;..\artifacts\assets\quick_icons\*sanitized_message_*.png"
+      Exclude="..\artifacts\assets\quick_icons\*_512.png" LogicalName="QuickIcons.%(Filename).png" />
+    <!-- Exit has no supplied replacement. Other command variants are superseded;
+         high-resolution source masters remain in IconPack. -->
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\16\Exit.png" LogicalName="Toolbar.16.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\20\Exit.png" LogicalName="Toolbar.20.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\24\Exit.png" LogicalName="Toolbar.24.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\32\Exit.png" LogicalName="Toolbar.32.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\40\Exit.png" LogicalName="Toolbar.40.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\48\Exit.png" LogicalName="Toolbar.48.Exit.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\Toolbar\64\Exit.png" LogicalName="Toolbar.64.Exit.png" />
+    <!-- The support command uses a native source for each shipped toolbar scale. -->
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-16x16.png" LogicalName="Toolbar.16.Support.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-20x20.png" LogicalName="Toolbar.20.Support.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-24x24.png" LogicalName="Toolbar.24.Support.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-32x32.png" LogicalName="Toolbar.32.Support.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-48x48.png" LogicalName="Toolbar.48.Support.png" />
+    <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-64x64.png" LogicalName="Toolbar.64.Support.png" />
+  </ItemGroup>
+
+</Project>

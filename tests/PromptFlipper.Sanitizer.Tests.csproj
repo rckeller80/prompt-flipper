@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\app\Sanitizer.cs" Link="Sanitizer.cs" />
+    <Compile Include="..\app\Search\TextSearch.cs" Link="TextSearch.cs" />
+    <Compile Include="..\app\ProtectedRuleStore.cs" Link="ProtectedRuleStore.cs" />
+    <Compile Include="..\app\ToolbarArtwork.cs" Link="ToolbarArtwork.cs" />
+    <Compile Include="..\app\SanitizedPromptSession.cs" Link="SanitizedPromptSession.cs" />
+    <Compile Include="..\app\SanitizedPromptEditor.cs" Link="SanitizedPromptEditor.cs" />
+    <ProjectReference Include="..\app\PromptFlipper.csproj" Aliases="PromptFlipperApp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
