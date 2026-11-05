@@ -34,7 +34,7 @@ internal sealed class AboutDialog : Form
   private const string Tagline = "Flipping prompts like a deck of cards.";
   private const string Author = "Rok";
   private const string License = "MIT";
-  private const string SourceRepository = "Not yet published";
+  private const string SourceRepository = "https://github.com/rckeller80/prompt-flipper";
   internal const string HelpRoute = "Help menu, View Help (F1)";
 
   public AboutDialog()
