@@ -17,7 +17,7 @@ You do not need to install .NET.
 
 The portable executable is unsigned.
 The signed route is the Microsoft Store MSIX package, which Microsoft signs after certification.
-The Store listing is in certification and is linked here when it is live.
+Get it from the [Microsoft Store](https://apps.microsoft.com/detail/9PJSW6KZ5F63).
 
 ### Privacy
 
@@ -75,4 +75,4 @@ See the [changelog](CHANGELOG.md) for the changes in each version.
 ## Licence
 
 Prompt Flipper uses the [MIT licence](LICENSE).
-Official downloads come from this repository or its Microsoft Store listing when available.
+Official downloads come from this repository or its [Microsoft Store listing](https://apps.microsoft.com/detail/9PJSW6KZ5F63).
