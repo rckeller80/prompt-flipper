@@ -35,6 +35,7 @@ internal sealed class AboutDialog : Form
   private const string Author = "RC Keller";
   private const string License = "MIT";
   private const string SourceRepository = "https://github.com/rckeller80/prompt-flipper";
+  private const string StoreUrl = "https://apps.microsoft.com/detail/9PJSW6KZ5F63";
   private const string IssuesUrl = "https://github.com/rckeller80/prompt-flipper/issues";
   internal const string HelpRoute = "Help menu, View Help (F1)";
 
@@ -48,7 +49,7 @@ internal sealed class AboutDialog : Form
     MaximizeBox = false;
     MinimizeBox = false;
     ShowInTaskbar = false;
-    ClientSize = new Size(460, 410);
+    ClientSize = new Size(460, 440);
     Font = ToolbarArtwork.UiFont;
 
     var closeButton = new Button
@@ -103,9 +104,10 @@ internal sealed class AboutDialog : Form
     AddField(fields, 5, "Source:", SourceRepository);
     AddField(fields, 6, "Help:", HelpRoute);
 
-    AddField(fields, 7, "Support:", IssuesUrl);
-    fields.Controls.Add(NewLabel("Buy me coffee:"), 0, 8);
-    fields.Controls.Add(donationLink, 1, 8);
+    AddField(fields, 7, "Store:", StoreUrl);
+    AddField(fields, 8, "Support:", IssuesUrl);
+    fields.Controls.Add(NewLabel("Buy me coffee:"), 0, 9);
+    fields.Controls.Add(donationLink, 1, 9);
 
     var buttons = new FlowLayoutPanel
     {
@@ -171,6 +173,7 @@ internal sealed class AboutDialog : Form
     Author: {Author}
     Licence: {License}
     Source: {SourceRepository}
+    Store: {StoreUrl}
     Support: {IssuesUrl}
     Buy me coffee: {SupportLink.Url}
     """;
