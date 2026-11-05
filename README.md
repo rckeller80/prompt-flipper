@@ -13,11 +13,16 @@ Download [PromptFlipper.exe](https://github.com/rckeller80/prompt-flipper/releas
 Run it on 64-bit Windows.
 You do not need to install .NET.
 
-### Code signing policy
+### Code signing
 
-The current executable is unsigned.
-The project is preparing an application to SignPath Foundation for free signing.
-See the [code signing policy](docs/code-signing-policy.md) for its status, scope and responsibilities.
+The portable executable is unsigned.
+The signed route is the Microsoft Store MSIX package, which Microsoft signs after certification.
+The Store listing is in certification and is linked here when it is live.
+
+### Privacy
+
+The app sends no data off your device.
+See the [privacy statement](PRIVACY.md).
 
 ### Windows SmartScreen
 
