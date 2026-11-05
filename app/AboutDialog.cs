@@ -35,6 +35,7 @@ internal sealed class AboutDialog : Form
   private const string Author = "RC Keller";
   private const string License = "MIT";
   private const string SourceRepository = "https://github.com/rckeller80/prompt-flipper";
+  private const string LinkedInUrl = "https://www.linkedin.com/in/rck123456/";
   private const string StoreUrl = "https://apps.microsoft.com/detail/9PJSW6KZ5F63";
   private const string IssuesUrl = "https://github.com/rckeller80/prompt-flipper/issues";
   internal const string HelpRoute = "Help menu, View Help (F1)";
@@ -49,7 +50,7 @@ internal sealed class AboutDialog : Form
     MaximizeBox = false;
     MinimizeBox = false;
     ShowInTaskbar = false;
-    ClientSize = new Size(460, 440);
+    ClientSize = new Size(460, 470);
     Font = ToolbarArtwork.UiFont;
 
     var closeButton = new Button
@@ -104,10 +105,11 @@ internal sealed class AboutDialog : Form
     AddField(fields, 5, "Source:", SourceRepository);
     AddField(fields, 6, "Help:", HelpRoute);
 
-    AddField(fields, 7, "Store:", StoreUrl);
-    AddField(fields, 8, "Support:", IssuesUrl);
-    fields.Controls.Add(NewLabel("Buy me coffee:"), 0, 9);
-    fields.Controls.Add(donationLink, 1, 9);
+    AddField(fields, 7, "LinkedIn:", LinkedInUrl);
+    AddField(fields, 8, "Store:", StoreUrl);
+    AddField(fields, 9, "Support:", IssuesUrl);
+    fields.Controls.Add(NewLabel("Buy me coffee:"), 0, 10);
+    fields.Controls.Add(donationLink, 1, 10);
 
     var buttons = new FlowLayoutPanel
     {
@@ -173,6 +175,7 @@ internal sealed class AboutDialog : Form
     Author: {Author}
     Licence: {License}
     Source: {SourceRepository}
+    LinkedIn: {LinkedInUrl}
     Store: {StoreUrl}
     Support: {IssuesUrl}
     Buy me coffee: {SupportLink.Url}
