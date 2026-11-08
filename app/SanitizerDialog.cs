@@ -12,13 +12,16 @@ internal sealed class SanitizerDialog : Form
   private readonly List<SanitizerRule> rules;
   private readonly ListBox ruleNames = new();
   private readonly TextBox ruleSearch;
-  private readonly CheckBox privateOnly = new();
+  private readonly CheckBox hideAll = new();
+  private readonly CheckBox sortByValue = new();
   private readonly TextBox valueEditor = new();
-  private readonly CheckBox privateSecret = new();
   private readonly Label status = new();
   private readonly Button removeButton = new();
-  private readonly CheckBox piiDetection = new();
   private readonly Button piiReviewButton = new();
+  private readonly ListBox piiFindings = new();
+  private readonly Button addFindingButton = new();
+  private readonly Button addAllFindingsButton = new();
+  private readonly TableLayoutPanel findingsPanel = new();
   private readonly TextBox reviewText = new();
   private readonly Label reviewStatus = new();
   private readonly ToolTip tooltips = new();
@@ -61,11 +64,15 @@ internal sealed class SanitizerDialog : Form
     ruleNames.FormattingEnabled = true;
     ruleNames.SelectionMode = SelectionMode.MultiExtended;
     ruleNames.HorizontalScrollbar = true;
+    // The item text is "value (name)" for search, accessibility and GetItemText; the drawn
+    // row shows the same text with the placeholder name in a secondary colour.
     ruleNames.Format += (_, e) =>
     {
       if (e.ListItem is string name)
-        e.Value = rules.FirstOrDefault(rule => rule.Name == name)?.ListText ?? name;
+        e.Value = RuleNamed(name)?.ListText(hideAll.Checked) ?? name;
     };
+    ruleNames.DrawMode = DrawMode.OwnerDrawFixed;
+    ruleNames.DrawItem += (_, e) => DrawRule(e);
     ruleNames.SelectedIndexChanged += (_, _) =>
     {
       if (!refreshingList) UpdateSelectedRule();
@@ -87,30 +94,52 @@ internal sealed class SanitizerDialog : Form
     removeButton.Click += (_, _) => RemoveSelectedRule();
     ToolbarArtwork.Apply(removeButton, "delete_64");
 
-    piiDetection.AutoSize = true;
-    piiDetection.Text = "PII &detection";
-    piiDetection.AccessibleName = "Enable PII detection";
-    piiDetection.CheckedChanged += (_, _) => InvalidateReview();
-
     piiReviewButton.AutoSize = true;
     piiReviewButton.Enabled = sourceText is not null;
     piiReviewButton.Text = "Re&view";
     piiReviewButton.Click += (_, _) => ShowReview();
 
-    var piiRow = new FlowLayoutPanel
+    // Personal details Review found that Sanitize would still leave in the output.
+    piiFindings.AccessibleName = "Personal details not sanitized";
+    piiFindings.IntegralHeight = false;
+    piiFindings.SelectionMode = SelectionMode.MultiExtended;
+    piiFindings.HorizontalScrollbar = true;
+    piiFindings.BorderStyle = BorderStyle.None;
+    piiFindings.Height = piiFindings.ItemHeight * 3 + 4;
+    piiFindings.FormattingEnabled = true;
+    piiFindings.Format += FormatFinding;
+    piiFindings.DoubleClick += (_, _) => AddFindings(selectedOnly: true);
+    addFindingButton.AutoSize = true;
+    addFindingButton.Text = "Add as secre&t";
+    addFindingButton.Click += (_, _) => AddFindings(selectedOnly: true);
+    addAllFindingsButton.AutoSize = true;
+    addAllFindingsButton.Text = "A&dd all";
+    addAllFindingsButton.Click += (_, _) => AddFindings(selectedOnly: false);
+    var findingButtons = new FlowLayoutPanel
     {
       AutoSize = true,
-      Dock = DockStyle.Fill,
-      FlowDirection = FlowDirection.LeftToRight,
+      FlowDirection = FlowDirection.TopDown,
       Margin = Padding.Empty,
       WrapContents = false
     };
-    piiRow.Controls.Add(piiDetection);
+    findingButtons.Controls.Add(addFindingButton);
+    findingButtons.Controls.Add(addAllFindingsButton);
+    findingsPanel.ColumnCount = 2;
+    findingsPanel.RowCount = 1;
+    findingsPanel.AutoSize = true;
+    findingsPanel.Dock = DockStyle.Fill;
+    findingsPanel.Margin = Padding.Empty;
+    findingsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+    findingsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    var findingsFrame = FrameField(piiFindings, singleLine: true);
+    findingsFrame.Height = piiFindings.Height + findingsFrame.Padding.Vertical + 2;
+    findingsPanel.Controls.Add(findingsFrame, 0, 0);
+    findingsPanel.Controls.Add(findingButtons, 1, 0);
 
     var listPanel = new TableLayoutPanel
     {
       ColumnCount = 1,
-      RowCount = 6,
+      RowCount = 5,
       Dock = DockStyle.Fill,
       Margin = new Padding(0, 0, ToolbarArtwork.Spacing(ToolbarArtwork.SpacingStep.M), 0)
     };
@@ -119,34 +148,41 @@ internal sealed class SanitizerDialog : Form
     listPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
     listPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     listPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-    listPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     listPanel.Controls.Add(new Label { AutoSize = true, Text = "P&laceholders" }, 0, 0);
     ruleSearch = SearchField.Create(SearchProfile.Load("sanitizer"), out var searchFrame);
     ruleNames.BorderStyle = BorderStyle.None;
     var listFrame = FrameField(ruleNames);
-    // The list filter is independent of the secret's own Private checkbox and applies at once.
-    privateOnly.Text = "&Hide private";
-    privateOnly.AccessibleName = "Hide private entries";
-    privateOnly.AutoSize = true;
+    // Hide all is on-screen protection only: it masks every value in the list and the editor
+    // and never changes what is stored, sanitized or restored. It is not persisted.
+    hideAll.Text = "&Hide all";
+    hideAll.AccessibleName = "Hide all secret values";
+    hideAll.AutoSize = true;
+    hideAll.CheckedChanged += (_, _) => ApplyHideAll();
+    sortByValue.Text = "S&ort A-Z";
+    sortByValue.AccessibleName = "Sort by secret value A-Z";
+    sortByValue.Appearance = Appearance.Button;
+    sortByValue.AutoSize = true;
     ruleSearch.TextChanged += (_, _) => RefreshRuleList(ruleNames.SelectedItem as string, reloadEditor: false);
-    privateOnly.CheckedChanged += (_, _) => RefreshRuleList(ruleNames.SelectedItem as string, reloadEditor: false);
+    sortByValue.CheckedChanged += (_, _) => RefreshRuleList(ruleNames.SelectedItem as string, reloadEditor: false);
+    var listOptionsRow = new FlowLayoutPanel
+    {
+      AutoSize = true,
+      Dock = DockStyle.Fill,
+      FlowDirection = FlowDirection.LeftToRight,
+      Margin = Padding.Empty,
+      WrapContents = false
+    };
+    listOptionsRow.Controls.Add(hideAll);
+    listOptionsRow.Controls.Add(sortByValue);
     listPanel.Controls.Add(searchFrame, 0, 1);
     listPanel.Controls.Add(listFrame, 0, 2);
-    listPanel.Controls.Add(privateOnly, 0, 4);
-    listPanel.Controls.Add(piiRow, 0, 5);
+    listPanel.Controls.Add(listOptionsRow, 0, 4);
 
     valueEditor.AccessibleName = "Secret";
     valueEditor.Dock = DockStyle.Fill;
     valueEditor.BorderStyle = BorderStyle.None;
-    valueEditor.UseSystemPasswordChar = true;
 
     var valueEditorFrame = FrameField(valueEditor, singleLine: true);
-
-    privateSecret.AutoSize = true;
-    privateSecret.Text = "&Private";
-    privateSecret.AccessibleName = "Keep this secret private";
-    privateSecret.Checked = true;
-    privateSecret.CheckedChanged += (_, _) => valueEditor.UseSystemPasswordChar = privateSecret.Checked;
 
     var saveRuleButton = new Button
     {
@@ -164,14 +200,14 @@ internal sealed class SanitizerDialog : Form
       Dock = DockStyle.Fill,
       Margin = Padding.Empty
     };
-    for (var row = 0; row < 3; row++)
+    for (var row = 0; row < 2; row++)
     {
       detailPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
     detailPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+    detailPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     detailPanel.Controls.Add(new Label { AutoSize = true, Text = "&Add / Edit" }, 0, 0);
     detailPanel.Controls.Add(valueEditorFrame, 0, 1);
-    detailPanel.Controls.Add(privateSecret, 0, 2);
     reviewText.Multiline = true;
     reviewText.ReadOnly = true;
     reviewText.ScrollBars = ScrollBars.Both;
@@ -181,7 +217,8 @@ internal sealed class SanitizerDialog : Form
     reviewText.BorderStyle = BorderStyle.None;
     reviewText.BackColor = SystemColors.Window;
     reviewText.MinimumSize = new Size(0, Font.Height * 4);
-    detailPanel.Controls.Add(FrameField(reviewText), 0, 3);
+    detailPanel.Controls.Add(FrameField(reviewText), 0, 2);
+    detailPanel.Controls.Add(findingsPanel, 0, 3);
 
     // Rule actions stay together immediately below their placeholder list.
     var ruleActionsRow = new TableLayoutPanel
@@ -236,11 +273,12 @@ internal sealed class SanitizerDialog : Form
     // Each button's tooltip is its own text with the mnemonic marker and trailing ellipsis
     // dropped, so none of them needs to be maintained by hand.
     foreach (var button in new[]
-             { importRulesButton, removeButton, saveRuleButton, piiReviewButton })
+             { importRulesButton, removeButton, saveRuleButton, piiReviewButton, addFindingButton, addAllFindingsButton })
     {
       tooltips.SetToolTip(button, button.Text.Replace("&", string.Empty).TrimEnd('.'));
       button.MinimumSize = button.PreferredSize;
     }
+    tooltips.SetToolTip(sortByValue, sortByValue.AccessibleName);
 
     // Sized once the editor has inherited its Font from the form, so the frame hugs a
     // single line instead of stretching to fill its row.
@@ -254,8 +292,20 @@ internal sealed class SanitizerDialog : Form
     ruleNames.MinimumSize = new Size(0, ruleNames.ItemHeight * 4 + 4);
     listFrame.MinimumSize = new Size(0, ruleNames.MinimumSize.Height + listFrame.Padding.Vertical);
     listPanel.MinimumSize = listPanel.GetPreferredSize(new Size(270, 0));
-    var minimumContent = layout.GetPreferredSize(new Size(minimumClientWidth, 0));
-    MinimumSize = SizeFromClientSize(new Size(minimumClientWidth, minimumContent.Height));
+    // The minimum size makes room for the findings row, which shows only after a Review finds something.
+    // The table's own preferred height drops its percent row below the panels' needs, so the
+    // rows are summed from what each panel needs.
+    findingsPanel.Visible = true;
+    var tableHeight = layout.GetPreferredSize(new Size(minimumClientWidth, 0)).Height;
+    var contentRow = Math.Max(listPanel.MinimumSize.Height + listPanel.Margin.Vertical,
+      detailPanel.GetPreferredSize(new Size(minimumClientWidth - 270, 0)).Height + detailPanel.Margin.Vertical);
+    var statusRow = Math.Max(status.GetPreferredSize(new Size(270, 0)).Height,
+      reviewStatus.GetPreferredSize(new Size(minimumClientWidth - 270, 0)).Height) + status.Margin.Vertical;
+    var buttonRow = bottomButtons.GetPreferredSize(Size.Empty).Height + bottomButtons.Margin.Vertical;
+    var minimumHeight = Math.Max(tableHeight, contentRow + statusRow + buttonRow + layout.Padding.Vertical);
+    findingsPanel.Visible = false;
+    MinimumSize = SizeFromClientSize(new Size(minimumClientWidth, minimumHeight));
+    if (ClientSize.Height < minimumHeight) ClientSize = new Size(ClientSize.Width, minimumHeight);
   }
 
   protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -277,20 +327,72 @@ internal sealed class SanitizerDialog : Form
 
   private static Icon? LoadSanitizerIcon() => ToolbarArtwork.LoadIcon("PromptFlipper.ico");
 
+  private const TextFormatFlags ListTextFlags = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine |
+    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPadding;
+
+  private SanitizerRule? RuleNamed(string? name) =>
+    name is null ? null : rules.FirstOrDefault(rule => rule.Name == name);
+
+  private void DrawRule(DrawItemEventArgs e)
+  {
+    e.DrawBackground();
+    if (e.Index >= 0 && e.Index < ruleNames.Items.Count && ruleNames.Items[e.Index] is string name)
+    {
+      var rule = RuleNamed(name);
+      var shown = rule?.ShownValue(hideAll.Checked) ?? name;
+      var selected = (e.State & DrawItemState.Selected) != 0;
+      var font = e.Font ?? ruleNames.Font;
+      var valueWidth = TextRenderer.MeasureText(e.Graphics, shown, font, Size.Empty, ListTextFlags).Width;
+      TextRenderer.DrawText(e.Graphics, shown, font, e.Bounds, e.ForeColor, ListTextFlags);
+      if (rule is not null)
+      {
+        var nameBounds = new Rectangle(e.Bounds.X + valueWidth, e.Bounds.Y,
+          Math.Max(0, e.Bounds.Width - valueWidth), e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, " (" + rule.Name + ")", font, nameBounds,
+          selected ? e.ForeColor : SystemColors.GrayText, ListTextFlags);
+      }
+    }
+    e.DrawFocusRectangle();
+  }
+
+  // The list scrolls sideways to the widest row so a long value is never cut off.
+  private void UpdateListExtent()
+  {
+    var widest = 0;
+    foreach (var item in ruleNames.Items)
+    {
+      widest = Math.Max(widest,
+        TextRenderer.MeasureText(ruleNames.GetItemText(item), ruleNames.Font, Size.Empty, ListTextFlags).Width);
+    }
+    ruleNames.HorizontalExtent = widest + 4;
+  }
+
+  private void ApplyHideAll()
+  {
+    valueEditor.UseSystemPasswordChar = hideAll.Checked;
+    UpdateListExtent();
+    ruleNames.Invalidate();
+    // Re-adding the findings re-runs their formatting with the new masking.
+    var findings = piiFindings.Items.Cast<object>().ToArray();
+    var selected = piiFindings.SelectedIndices.Cast<int>().ToArray();
+    piiFindings.BeginUpdate();
+    piiFindings.Items.Clear();
+    piiFindings.Items.AddRange(findings);
+    foreach (var index in selected) piiFindings.SetSelected(index, true);
+    piiFindings.EndUpdate();
+  }
+
   private void UpdateSelectedRule()
   {
-    var selected = SingleSelectedName();
-    var rule = rules.FirstOrDefault(rule => rule.Name == selected);
-    valueEditor.UseSystemPasswordChar = true;
+    var rule = RuleNamed(SingleSelectedName());
+    valueEditor.UseSystemPasswordChar = hideAll.Checked;
     valueEditor.Text = rule?.Value ?? string.Empty;
-    privateSecret.Checked = rule?.Private ?? true;
-    valueEditor.UseSystemPasswordChar = privateSecret.Checked;
     UpdateSelectionControls();
   }
 
   private void UpdateSelectionControls()
   {
-    valueEditor.Enabled = privateSecret.Enabled = ruleNames.SelectedItems.Count <= 1;
+    valueEditor.Enabled = ruleNames.SelectedItems.Count <= 1;
     removeButton.Enabled = ruleNames.SelectedItems.Count > 0;
   }
 
@@ -300,9 +402,8 @@ internal sealed class SanitizerDialog : Form
   private void StartNewRule()
   {
     ruleNames.ClearSelected();
-    valueEditor.Enabled = privateSecret.Enabled = true;
+    valueEditor.Enabled = true;
     valueEditor.Clear();
-    privateSecret.Checked = true;
     valueEditor.Focus();
   }
 
@@ -331,7 +432,7 @@ internal sealed class SanitizerDialog : Form
       return;
     }
 
-    candidate.Add(new SanitizerRule(name, value, privateSecret.Checked));
+    candidate.Add(new SanitizerRule(name, value));
     if (!Sanitizer.TrySanitize(string.Empty, candidate, out _))
     {
       ShowRuleChange("Placeholder labels must produce different non-empty normalized names. Nothing was saved.");
@@ -343,8 +444,7 @@ internal sealed class SanitizerDialog : Form
       return;
     }
 
-    // The value and its Private flag were persisted together; the list now shows the saved
-    // privacy and drops the row when the current search or Hide private excludes it.
+    // The list drops the saved row when the current search excludes it.
     ReplaceRules(candidate);
     RefreshRuleList(name);
     var savedRule = candidate[^1];
@@ -367,9 +467,14 @@ internal sealed class SanitizerDialog : Form
       return;
     }
 
+    ImportFrom(() => File.ReadLines(dialog.FileName));
+  }
+
+  internal void ImportFrom(Func<IEnumerable<string>> readLines)
+  {
     var previousCount = rules.Count;
     if (!Sanitizer.TryImportRulesAndWrite(
-        () => File.ReadLines(dialog.FileName),
+        readLines,
         rules,
         persistRules,
         out var importedRules))
@@ -390,26 +495,69 @@ internal sealed class SanitizerDialog : Form
   {
     reviewText.Clear();
     reviewStatus.Text = string.Empty;
+    piiFindings.Items.Clear();
+    findingsPanel.Visible = false;
   }
 
+  // Review always checks the sanitized result for personal details that would still be shared,
+  // and offers to add each one as a secret.
   private void ShowReview()
   {
     InvalidateReview();
-    if (sourceText is null || rules.Count == 0 || !Sanitizer.TrySanitize(sourceText, rules, out var sanitized))
+    if (sourceText is null || rules.Count == 0 || !Sanitizer.TrySanitize(sourceText, rules, out var sanitized) ||
+        sanitized is null)
     {
       reviewStatus.Text = sourceText is null ? "Open a card to review." :
         rules.Count == 0 ? "Add a secret before reviewing." : "Review unavailable. Check the configured secrets.";
       return;
     }
     reviewText.Text = sanitized;
-    if (!piiDetection.Checked) return;
-    var findings = PiiDetector.Detect(sourceText);
-    var summary = findings
-      .GroupBy(finding => finding.Category, StringComparer.Ordinal)
-      .OrderBy(group => group.Key, StringComparer.Ordinal)
-      .Select(group => $"{group.Key}: {group.Count()}");
-    reviewStatus.Text = findings.Count == 0 ? "No PII detected in the current card." :
-      "PII detected: " + string.Join("; ", summary);
+    var findings = PiiDetector.Detect(sanitized)
+      .DistinctBy(finding => finding.Value, StringComparer.Ordinal)
+      .ToList();
+    if (findings.Count == 0)
+    {
+      reviewStatus.Text = "No personal details found.";
+      return;
+    }
+    foreach (var finding in findings) piiFindings.Items.Add(finding);
+    piiFindings.SelectedIndex = 0;
+    findingsPanel.Visible = true;
+    reviewStatus.Text = findings.Count == 1
+      ? "1 personal detail is not sanitized yet. Select Add as secret to replace it."
+      : $"{findings.Count} personal details are not sanitized yet. Select Add as secret or Add all to replace them.";
+  }
+
+  private void FormatFinding(object? sender, ListControlConvertEventArgs e)
+  {
+    if (e.ListItem is PiiFinding finding)
+      e.Value = $"{finding.Category}: {(hideAll.Checked ? SanitizerRule.HiddenValue : finding.Value)}";
+  }
+
+  private void AddFindings(bool selectedOnly)
+  {
+    var values = (selectedOnly ? piiFindings.SelectedItems.Cast<PiiFinding>() : piiFindings.Items.Cast<PiiFinding>())
+      .Select(finding => finding.Value)
+      .ToList();
+    if (values.Count == 0) return;
+
+    var candidate = rules.ToList();
+    foreach (var value in values.Where(value => !candidate.Any(rule => rule.Value == value)))
+    {
+      candidate.Add(new SanitizerRule(Sanitizer.NextRuleName(candidate), value));
+    }
+    if (!Sanitizer.TrySanitize(string.Empty, candidate, out _))
+    {
+      ShowRuleChange("These details could not be added as secrets. Nothing was saved.");
+      return;
+    }
+    if (!TryPersist(candidate)) return;
+
+    var added = candidate.Count - rules.Count;
+    ReplaceRules(candidate);
+    RefreshRuleList();
+    ShowRuleChange(added == 1 ? "1 personal detail was added as a secret." : $"{added} personal details were added as secrets.");
+    ShowReview();
   }
 
   private void RemoveSelectedRule()
@@ -453,7 +601,7 @@ internal sealed class SanitizerDialog : Form
 
   private void ShowRuleChange(string message)
   {
-    status.Text = privateOnly.Checked ? $"{message} {DisabledOrReadyStatus()}" : message;
+    status.Text = message;
   }
 
   private void ReplaceRules(IEnumerable<SanitizerRule> replacement)
@@ -463,8 +611,8 @@ internal sealed class SanitizerDialog : Form
     rules.AddRange(replacement);
   }
 
-  // A filter change keeps the editor (a draft and its Private checkbox) unless the edited
-  // row itself leaves the list. A rule change always reloads the editor from saved state.
+  // A search or sort change keeps the editor draft unless the edited row itself leaves the
+  // list. A rule change always reloads the editor from saved state.
   private void RefreshRuleList(string? selectedName = null, bool reloadEditor = true)
   {
     var editedBefore = SingleSelectedName();
@@ -473,11 +621,14 @@ internal sealed class SanitizerDialog : Form
     {
       ruleNames.BeginUpdate();
       ruleNames.Items.Clear();
-      foreach (var rule in Sanitizer.FilterRules(rules, ruleSearch.Text, privateOnly.Checked)
-        .OrderBy(rule => rule.Name, StringComparer.Ordinal))
+      var shown = Sanitizer.FilterRules(rules, ruleSearch.Text);
+      foreach (var rule in sortByValue.Checked
+        ? Sanitizer.SortByValue(shown)
+        : shown.OrderBy(rule => rule.Name, StringComparer.Ordinal))
       {
         ruleNames.Items.Add(rule.Name);
       }
+      UpdateListExtent();
       ruleNames.EndUpdate();
 
       if (selectedName is not null)
@@ -508,10 +659,7 @@ internal sealed class SanitizerDialog : Form
       return "No placeholders yet. Secrets are encrypted for your Windows account.";
     }
 
-    var stored = $"{rules.Count} secret{(rules.Count == 1 ? string.Empty : "s")} stored.";
-    if (!privateOnly.Checked) return stored;
-    var hidden = rules.Count(rule => rule.Private);
-    return $"{stored} {hidden} private entr{(hidden == 1 ? "y" : "ies")} hidden.";
+    return $"{rules.Count} secret{(rules.Count == 1 ? string.Empty : "s")} stored.";
   }
 
   internal static Panel FrameField(Control field, bool singleLine = false)

@@ -10,21 +10,22 @@ public sealed class SanitizerRule
 {
     public const string PlaceholderNamespace = "PromptFlipper.Sanitizer";
 
-    public SanitizerRule(string name, string value, bool isPrivate = true)
+    public const string HiddenValue = "********";
+
+    public SanitizerRule(string name, string value)
     {
         Name = name;
         Value = value;
-        Private = isPrivate;
     }
 
     public string Name { get; }
 
     public string Value { get; }
 
-    public bool Private { get; }
+    public string ShownValue(bool hidden) => hidden ? HiddenValue : Value;
 
-    public string ListText => Name + " (" + (Private ? "***" :
-        Value.Length > 6 ? Value[..6] + "..." : Value) + ")";
+    // The secret value leads; the placeholder name is secondary.
+    public string ListText(bool hidden) => ShownValue(hidden) + " (" + Name + ")";
 
     public string NormalizedName => NormalizeName(Name);
 
@@ -104,11 +105,17 @@ public static class Sanitizer
     }
 
     public static IEnumerable<SanitizerRule> FilterRules(
-        IEnumerable<SanitizerRule> rules, string search, bool hidePrivate)
+        IEnumerable<SanitizerRule> rules, string search)
     {
-        // A private rule's value is never searched.
-        return TextSearch.Filter(rules.Where(rule => !hidePrivate || !rule.Private), search,
-            rule => rule.Private ? new[] { rule.Name } : new[] { rule.Name, rule.Value });
+        return TextSearch.Filter(rules, search, rule => new[] { rule.Name, rule.Value });
+    }
+
+    // Value order for the list: A-Z by secret value, ties broken by placeholder name.
+    public static IEnumerable<SanitizerRule> SortByValue(IEnumerable<SanitizerRule> rules)
+    {
+        return rules
+            .OrderBy(rule => rule.Value, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(rule => rule.Name, StringComparer.Ordinal);
     }
 
     public static string NextRuleName(IEnumerable<SanitizerRule> rules)

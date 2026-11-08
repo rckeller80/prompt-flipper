@@ -60,7 +60,7 @@ internal sealed class ProtectedRuleStore
       }
 
       var loadedRules = storedRules
-        .Select(rule => new SanitizerRule(rule!.Name!, rule.Value!, rule.Private ?? true))
+        .Select(rule => new SanitizerRule(rule!.Name!, rule.Value!))
         .ToList();
       return loadedRules;
     }
@@ -78,7 +78,7 @@ internal sealed class ProtectedRuleStore
   public void Save(IEnumerable<SanitizerRule> rulesToSave)
   {
     var storedRules = rulesToSave
-      .Select(rule => new StoredRule(rule.Name, rule.Value, rule.Private))
+      .Select(rule => new StoredRule(rule.Name, rule.Value))
       .ToArray();
     var clearBytes = JsonSerializer.SerializeToUtf8Bytes(storedRules, JsonOptions);
     try
@@ -214,7 +214,8 @@ internal sealed class ProtectedRuleStore
     public readonly IntPtr Data = data;
   }
 
-  private sealed record StoredRule(string? Name, string? Value, bool? Private = null);
+  // A legacy "private" field in older files is ignored on load and dropped on the next save.
+  private sealed record StoredRule(string? Name, string? Value);
 }
 
 

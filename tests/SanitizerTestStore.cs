@@ -31,7 +31,7 @@ internal static class SanitizerTestRules
     internal static Delegate Loader(Func<IEnumerable<SanitizerRule>>? load = null)
     {
         Func<IEnumerable> adapted = () => (load?.Invoke() ?? []).Select(rule =>
-            Activator.CreateInstance(Rule, rule.Name, rule.Value, rule.Private)!).ToArray();
+            Activator.CreateInstance(Rule, rule.Name, rule.Value)!).ToArray();
         return (Delegate)typeof(SanitizerTestRules).GetMethod(nameof(TypedLoader), BindingFlags.Static | BindingFlags.NonPublic)!
             .MakeGenericMethod(Rule).Invoke(null, [adapted])!;
     }
@@ -42,8 +42,7 @@ internal static class SanitizerTestRules
     {
         Action<object> adapted = values => save?.Invoke(((IEnumerable)values).Cast<object>().Select(rule =>
             new SanitizerRule((string)Rule.GetProperty("Name")!.GetValue(rule)!,
-                (string)Rule.GetProperty("Value")!.GetValue(rule)!,
-                (bool)Rule.GetProperty("Private")!.GetValue(rule)!)));
+                (string)Rule.GetProperty("Value")!.GetValue(rule)!)));
         return Delegate.CreateDelegate(typeof(Action<>).MakeGenericType(typeof(IEnumerable<>).MakeGenericType(Rule)),
             adapted.Target, adapted.Method);
     }
