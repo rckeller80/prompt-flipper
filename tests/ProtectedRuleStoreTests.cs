@@ -23,31 +23,32 @@ public sealed class ProtectedRuleStoreTests
     }
 
     [Fact]
-    public void ProtectedRoundTripReplacesEncryptedFileAndPreservesPrivacy()
+    public void ProtectedRoundTripReplacesEncryptedFile()
     {
         using var fixture = new SanitizerTestStore();
         fixture.Store.Save([new SanitizerRule("old", "synthetic-old")]);
         var oldBytes = File.ReadAllBytes(fixture.PathName);
-        fixture.Store.Save([new SanitizerRule("private", "synthetic-private"),
-            new SanitizerRule("public", "synthetic-public", false)]);
+        fixture.Store.Save([new SanitizerRule("first", "synthetic-first"),
+            new SanitizerRule("second", "synthetic-second")]);
         var bytes = File.ReadAllBytes(fixture.PathName);
         Assert.False(oldBytes.SequenceEqual(bytes));
         Assert.DoesNotContain("synthetic", Encoding.UTF8.GetString(bytes));
         var result = fixture.Store.Load();
         Assert.Null(result.Error);
-        Assert.Equal(new[] { ("private", "synthetic-private", true), ("public", "synthetic-public", false) },
-            result.Rules.Select(rule => (rule.Name, rule.Value, rule.Private)));
+        Assert.Equal(new[] { ("first", "synthetic-first"), ("second", "synthetic-second") },
+            result.Rules.Select(rule => (rule.Name, rule.Value)));
         Assert.Single(Directory.GetFiles(Path.GetDirectoryName(fixture.PathName)!));
     }
 
     [Theory]
     [InlineData("[{\"name\":\"legacy\",\"value\":\"synthetic-legacy\"}]", true)]
+    [InlineData("[{\"name\":\"legacy\",\"value\":\"synthetic-legacy\",\"private\":true}]", true)]
     [InlineData("null", false)]
     [InlineData("[null]", false)]
     [InlineData("[{\"name\":\"invalid\"}]", false)]
     [InlineData("not JSON", false)]
     [InlineData("[{\"name\":\"invalid\",\"value\":\"\"}]", false)]
-    public void EncryptedPayloadValidatesAndLegacyPrivacyDefaultsToPrivate(string json, bool valid)
+    public void EncryptedPayloadValidatesAndIgnoresLegacyPrivateField(string json, bool valid)
     {
         using var fixture = new SanitizerTestStore();
         var protect = typeof(ProtectedRuleStore).GetMethod("Protect", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -56,7 +57,7 @@ public sealed class ProtectedRuleStoreTests
         if (valid)
         {
             Assert.Null(result.Error);
-            Assert.True(Assert.Single(result.Rules).Private);
+            Assert.Equal("synthetic-legacy", Assert.Single(result.Rules).Value);
         }
         else AssertFailedLoad(fixture.Store);
     }
@@ -114,7 +115,7 @@ public sealed class ProtectedRuleStoreTests
             using (var dialog = SanitizerTestRules.CreateDialog(load: () =>
             {
                 calls++;
-                return [new SanitizerRule("synthetic", "synthetic-value", false)];
+                return [new SanitizerRule("synthetic", "synthetic-value")];
             }))
             {
                 Assert.Equal(1, calls);

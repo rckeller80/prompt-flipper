@@ -24,9 +24,6 @@ public sealed class SanitizerReviewLayoutTests
             Assert.True(review.ReadOnly && review.Multiline);
             Assert.Equal(ScrollBars.Both, review.ScrollBars);
             Assert.True(button.Enabled);
-            Field<CheckBox>(dialog, "privateOnly").Checked = true;
-            Assert.Equal("public", Assert.Single(Field<ListBox>(dialog, "ruleNames").Items.Cast<string>()));
-            Assert.Contains("1 private entry hidden", Field<Label>(dialog, "status").Text);
             button.PerformClick();
             var expected = Expected(rules);
             Assert.Equal(expected, review.Text);
@@ -34,21 +31,14 @@ public sealed class SanitizerReviewLayoutTests
             Assert.Contains("{{PromptFlipper.Sanitizer.secret}}", review.Text);
             Assert.Contains("A second line", review.Text);
 
-            Field<CheckBox>(dialog, "piiDetection").Checked = true;
-            Assert.Empty(review.Text);
-            button.PerformClick();
-            Assert.Equal(expected, review.Text);
-            Assert.Contains("PII detected:", Field<Label>(dialog, "reviewStatus").Text);
-            Assert.DoesNotContain("user@example.org", Field<Label>(dialog, "reviewStatus").Text);
-
-            Replace(dialog, ("changed", "public-value", true));
+            Replace(dialog, ("changed", "public-value"));
             Assert.Empty(review.Text);
             Assert.Empty(Field<Label>(dialog, "reviewStatus").Text);
             button.PerformClick();
             expected = Expected(rules);
             Assert.Equal(expected, review.Text);
 
-            Replace(dialog, ("invalid", "", true));
+            Replace(dialog, ("invalid", ""));
             button.PerformClick();
             Assert.Empty(review.Text);
             Assert.Contains("Review unavailable", Field<Label>(dialog, "reviewStatus").Text);
@@ -56,6 +46,47 @@ public sealed class SanitizerReviewLayoutTests
             button.PerformClick();
             Assert.Empty(review.Text);
             Assert.Contains("Add a secret", Field<Label>(dialog, "reviewStatus").Text);
+        });
+    }
+
+    [Fact]
+    public void ReviewListsUnsanitizedPersonalDetailsAndAddsThemAsSecrets()
+    {
+        WithDialog(Source + "\r\nCall 555-123-4567.", (dialog, rules) =>
+        {
+            Assert.DoesNotContain(Descendants(dialog).OfType<CheckBox>(), box => box.Text.Contains("PII"));
+            var findings = Field<ListBox>(dialog, "piiFindings");
+            var panel = Field<TableLayoutPanel>(dialog, "findingsPanel");
+            var status = Field<Label>(dialog, "reviewStatus");
+            var review = Field<TextBox>(dialog, "reviewText");
+            Assert.False(panel.Visible);
+
+            Field<Button>(dialog, "piiReviewButton").PerformClick();
+            Assert.True(panel.Visible);
+            Assert.Equal(new[] { "Email address: user@example.org", "Phone number: 555-123-4567" },
+                findings.Items.Cast<object>().Select(findings.GetItemText));
+            Assert.StartsWith("2 personal details are not sanitized yet.", status.Text);
+
+            // Hide all masks the listed text and leaves the sanitized output unchanged.
+            var before = review.Text;
+            Field<CheckBox>(dialog, "hideAll").Checked = true;
+            Assert.Equal("Email address: ********", findings.GetItemText(findings.Items[0]));
+            Assert.Equal(before, review.Text);
+            Field<CheckBox>(dialog, "hideAll").Checked = false;
+
+            // One click on the selected finding adds it, refreshes the preview and drops it from the list.
+            findings.ClearSelected();
+            findings.SelectedIndex = 0;
+            Field<Button>(dialog, "addFindingButton").PerformClick();
+            Assert.Equal(3, rules.Count);
+            Assert.DoesNotContain("user@example.org", review.Text);
+            Assert.Equal("Phone number: 555-123-4567", findings.GetItemText(Assert.Single(findings.Items.Cast<object>())));
+
+            Field<Button>(dialog, "addAllFindingsButton").PerformClick();
+            Assert.Equal(4, rules.Count);
+            Assert.DoesNotContain("555-123-4567", review.Text);
+            Assert.False(panel.Visible);
+            Assert.Equal("No personal details found.", status.Text);
         });
     }
 
@@ -144,18 +175,17 @@ public sealed class SanitizerReviewLayoutTests
     {
         var copies = rules.Cast<object>().Select(rule => new SanitizerRule(
             (string)rule.GetType().GetProperty("Name")!.GetValue(rule)!,
-            (string)rule.GetType().GetProperty("Value")!.GetValue(rule)!,
-            (bool)rule.GetType().GetProperty("Private")!.GetValue(rule)!));
+            (string)rule.GetType().GetProperty("Value")!.GetValue(rule)!));
         Assert.True(Sanitizer.TrySanitize(Source, copies, out var expected));
         return expected!;
     }
 
-    private static void Replace(Form dialog, params (string Name, string Value, bool Private)[] values)
+    private static void Replace(Form dialog, params (string Name, string Value)[] values)
     {
         var type = dialog.GetType().Assembly.GetType("PromptFlipper.SanitizerRule", true)!;
         var rules = Array.CreateInstance(type, values.Length);
         for (var index = 0; index < values.Length; index++)
-            rules.SetValue(Activator.CreateInstance(type, values[index].Name, values[index].Value, values[index].Private), index);
+            rules.SetValue(Activator.CreateInstance(type, values[index].Name, values[index].Value), index);
         Invoke(dialog, "ReplaceRules", rules);
     }
 
@@ -167,7 +197,7 @@ public sealed class SanitizerReviewLayoutTests
             try
             {
                 using var dialog = SanitizerTestRules.CreateDialog(source, "Synthetic card");
-                Replace(dialog, ("secret", "synthetic-secret", true), ("public", "public-value", false));
+                Replace(dialog, ("secret", "synthetic-secret"), ("public", "public-value"));
                 var rules = Field<IList>(dialog, "rules");
                 Invoke(dialog, "RefreshRuleList", null!, true);
                 dialog.Show();

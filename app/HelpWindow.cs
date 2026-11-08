@@ -113,7 +113,8 @@ internal sealed class HelpWindow : Form
       new HelpSection("Sanitizer", """
         Sanitizer replaces your saved secrets with placeholders. Don't forget to review the result.
         De-Sanitize puts back original placeholder values.
-        Review and PII detection are in Settings.
+        Review in Settings shows the result and lists personal details that are not sanitized yet.
+        Select Add as secret or Add all to replace them from then on.
         """),
       new HelpSection("Trash", """
         Select Trash to delete any active card. Prompt Flipper will ask to confirm.
