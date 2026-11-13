@@ -2,8 +2,10 @@
 
 ## Unreleased
 
-- Review finds UK, Dutch and international phone numbers, IBANs and UK postcodes.
-- Review reports a card number only when it passes the Luhn check.
+- Review finds UK, Dutch and international phone numbers, IBANs, IP addresses, Dutch BSNs, UK
+  National Insurance and NHS numbers, and UK and Dutch postcodes.
+- Review reports an IBAN, card number, BSN or NHS number only when it passes its check digit.
+- Review reports a postcode only next to an address word, and an NHS number only next to "NHS".
 - Review never reports an IBAN as a card number or a phone number.
 - Settings states which personal details Review finds. Review does not find names or street addresses.
 - The Sanitizer button states that it replaces saved secrets only and does not check for personal details.
