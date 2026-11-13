@@ -192,7 +192,7 @@ public sealed class SanitizedPromptEditorTests
         var written = new List<string>();
         Assert.True(Sanitizer.TryQuickSanitize("x secret-1", () => new[] { Token }, written.Add,
             out var status, out var output, out var spans));
-        Assert.Equal("Sanitized and copied", status);
+        Assert.Equal("Sanitized and copied. " + Sanitizer.QuickSanitizeScope, status);
         Assert.Equal(output, Assert.Single(written));
         Assert.Equal(new SanitizedSpan(2, Token.Placeholder, "secret-1"), Assert.Single(spans));
 

@@ -100,9 +100,13 @@ public static class Sanitizer
         }
         sanitized = output;
         spans = found;
-        status = "Sanitized and copied";
+        status = "Sanitized and copied. " + QuickSanitizeScope;
         return true;
     }
+
+    /// <summary>The warning shown with Quick Sanitize, which runs no personal details check.</summary>
+    public const string QuickSanitizeScope =
+        "Saved secrets only. No personal details check.";
 
     public static IEnumerable<SanitizerRule> FilterRules(
         IEnumerable<SanitizerRule> rules, string search)
@@ -315,16 +319,57 @@ public sealed record SanitizedSpan(int Start, string Placeholder, string Origina
 /// <summary>One piece of text that matched a PII category, with the matched text for review.</summary>
 public sealed record PiiFinding(string Category, string Value);
 
+/// <summary>
+/// Pattern-based detection of structured personal details. Names and street addresses are not
+/// detected: no local detector that ships inside the single-file build recognizes them.
+/// </summary>
 public static class PiiDetector
 {
+    public const string Email = "Email address";
+    public const string Phone = "Phone number";
+    public const string Iban = "IBAN";
+    public const string Card = "Card number";
+    public const string Ssn = "US Social Security number";
+    public const string Postcode = "UK postcode";
+
+    public static IReadOnlyList<string> CoveredCategories { get; } = [Email, Phone, Iban, Card, Ssn, Postcode];
+
+    public const string CoverageStatement =
+        "Finds: email, phone, IBAN, card, US SSN, UK postcode. Not names or addresses.";
+
+    // Total IBAN length per country, from the SWIFT IBAN registry.
+    private static readonly Dictionary<string, int> IbanLengths = new(StringComparer.Ordinal)
+    {
+        ["AD"] = 24, ["AE"] = 23, ["AL"] = 28, ["AT"] = 20, ["AZ"] = 28, ["BA"] = 20, ["BE"] = 16,
+        ["BG"] = 22, ["BH"] = 22, ["BR"] = 29, ["BY"] = 28, ["CH"] = 21, ["CR"] = 22, ["CY"] = 28,
+        ["CZ"] = 24, ["DE"] = 22, ["DK"] = 18, ["DO"] = 28, ["EE"] = 20, ["EG"] = 29, ["ES"] = 24,
+        ["FI"] = 18, ["FO"] = 18, ["FR"] = 27, ["GB"] = 22, ["GE"] = 22, ["GI"] = 23, ["GL"] = 18,
+        ["GR"] = 27, ["GT"] = 28, ["HR"] = 21, ["HU"] = 28, ["IE"] = 22, ["IL"] = 23, ["IQ"] = 23,
+        ["IS"] = 26, ["IT"] = 27, ["JO"] = 30, ["KW"] = 30, ["KZ"] = 20, ["LB"] = 28, ["LC"] = 32,
+        ["LI"] = 21, ["LT"] = 20, ["LU"] = 20, ["LV"] = 21, ["MC"] = 27, ["MD"] = 24, ["ME"] = 22,
+        ["MK"] = 19, ["MR"] = 27, ["MT"] = 31, ["MU"] = 30, ["NL"] = 18, ["NO"] = 15, ["PK"] = 24,
+        ["PL"] = 28, ["PS"] = 29, ["PT"] = 25, ["QA"] = 29, ["RO"] = 24, ["RS"] = 22, ["SA"] = 24,
+        ["SC"] = 31, ["SE"] = 24, ["SI"] = 19, ["SK"] = 24, ["SM"] = 27, ["ST"] = 25, ["SV"] = 28,
+        ["TL"] = 23, ["TN"] = 24, ["TR"] = 26, ["UA"] = 29, ["VA"] = 22, ["VG"] = 24, ["XK"] = 20
+    };
+
+    private static readonly Regex IbanPattern = new(
+        @"(?<![A-Za-z0-9])([A-Z]{2})\d{2}(?: ?[A-Z0-9]){11,30}", RegexOptions.Compiled);
+    private static readonly Regex CardPattern = new(
+        @"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex SsnPattern = new(
+        @"(?<!\d)(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex PostcodePattern = new(
+        @"(?<![A-Za-z0-9])[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}(?![A-Za-z0-9])", RegexOptions.Compiled);
     private static readonly Regex EmailPattern = new(
         @"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", RegexOptions.Compiled);
-    private static readonly Regex PhonePattern = new(
-        @"(?<!\d)(\+?\d{1,2}[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?!\d)", RegexOptions.Compiled);
-    private static readonly Regex SsnPattern = new(
-        @"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)", RegexOptions.Compiled);
-    private static readonly Regex CreditCardPattern = new(
-        @"(?<!\d)(?:\d[ -]?){13,19}(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex NanpPhonePattern = new(
+        @"(?<![\d+])(?:\+1[ .-]?)?(?:\(\d{3}\)|\d{3})[ .-]?\d{3}[ .-]?\d{4}(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex InternationalPhonePattern = new(
+        @"(?<![\w+])\+\d{1,3}(?:[ .-]?\(0\))?(?:[ .-]?\d){6,13}(?!\d)", RegexOptions.Compiled);
+    // National numbers with a trunk 0: 11 digits in the UK, 10 in the Netherlands.
+    private static readonly Regex NationalPhonePattern = new(
+        @"(?<![\w+])0\d(?:[ .-]?\d){8,9}(?!\d)", RegexOptions.Compiled);
 
     public static IReadOnlyList<PiiFinding> Detect(string? text)
     {
@@ -333,19 +378,67 @@ public static class PiiDetector
             return Array.Empty<PiiFinding>();
         }
 
-        var findings = new List<PiiFinding>();
-        AddMatches(findings, "Email address", EmailPattern, text);
-        AddMatches(findings, "Phone number", PhonePattern, text);
-        AddMatches(findings, "Social Security Number", SsnPattern, text);
-        AddMatches(findings, "Credit card number", CreditCardPattern, text);
-        return findings;
+        // Earlier categories win: an IBAN or card number is never also listed as a phone number.
+        var accepted = new List<(int Start, int End, PiiFinding Finding)>();
+        void Accept(int start, int length, string category)
+        {
+            var end = start + length;
+            if (accepted.Any(span => start < span.End && span.Start < end)) return;
+            accepted.Add((start, end, new PiiFinding(category, text.Substring(start, length))));
+        }
+
+        foreach (Match match in IbanPattern.Matches(text))
+        {
+            if (TryMeasureIban(text, match, out var length)) Accept(match.Index, length, Iban);
+        }
+        foreach (Match match in CardPattern.Matches(text))
+        {
+            if (PassesLuhn(match.Value)) Accept(match.Index, match.Length, Card);
+        }
+        foreach (Match match in SsnPattern.Matches(text)) Accept(match.Index, match.Length, Ssn);
+        foreach (Match match in EmailPattern.Matches(text)) Accept(match.Index, match.Length, Email);
+        foreach (Match match in PostcodePattern.Matches(text)) Accept(match.Index, match.Length, Postcode);
+        foreach (var pattern in new[] { NanpPhonePattern, InternationalPhonePattern, NationalPhonePattern })
+        {
+            foreach (Match match in pattern.Matches(text))
+            {
+                var digits = match.Value.Count(char.IsAsciiDigit);
+                if (digits is >= 8 and <= 15) Accept(match.Index, match.Length, Phone);
+            }
+        }
+        return accepted.OrderBy(span => span.Start).Select(span => span.Finding).ToList();
     }
 
-    private static void AddMatches(List<PiiFinding> findings, string category, Regex pattern, string text)
+    // Structure only: country code and that country's length. Check digits are not verified, so a
+    // mistyped or example IBAN is still reported.
+    private static bool TryMeasureIban(string text, Match match, out int length)
     {
-        foreach (Match match in pattern.Matches(text))
+        length = 0;
+        if (!IbanLengths.TryGetValue(match.Groups[1].Value, out var expected)) return false;
+        var count = 0;
+        var end = match.Index;
+        while (end < match.Index + match.Length && count < expected)
         {
-            findings.Add(new PiiFinding(category, match.Value));
+            if (char.IsAsciiLetterOrDigit(text[end])) count++;
+            end++;
         }
+        if (count < expected || (end < text.Length && char.IsAsciiLetterOrDigit(text[end]))) return false;
+        length = end - match.Index;
+        return true;
+    }
+
+    private static bool PassesLuhn(string value)
+    {
+        var sum = 0;
+        var doubleIt = false;
+        for (var i = value.Length - 1; i >= 0; i--)
+        {
+            if (!char.IsAsciiDigit(value[i])) continue;
+            var digit = value[i] - '0';
+            if (doubleIt && (digit *= 2) > 9) digit -= 9;
+            sum += digit;
+            doubleIt = !doubleIt;
+        }
+        return sum % 10 == 0;
     }
 }

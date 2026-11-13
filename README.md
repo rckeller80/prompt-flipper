@@ -45,9 +45,12 @@ No manual searching and replacing of every configured secret.
 
 ### Personal details check
 
-**Review** in Settings checks the sanitized text for email addresses, phone numbers, Social
-Security numbers and credit card numbers that are not sanitized yet. Select **Add as secret** or
-**Add all** to sanitize them from then on.
+**Review** in Settings checks the sanitized text for personal details that are not sanitized yet.
+Select **Add as secret** or **Add all** to sanitize them from then on.
+
+Review finds email, phone (US, UK, Dutch, +international), IBAN, card number, US SSN and UK
+postcode. It does not find names or addresses. The **Sanitizer** button replaces saved secrets
+only.
 
 The check is a safety aid, not a guarantee. Always review your sanitized content before sharing.
 
