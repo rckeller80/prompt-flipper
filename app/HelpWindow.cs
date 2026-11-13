@@ -115,7 +115,8 @@ internal sealed class HelpWindow : Form
         De-Sanitize puts back original placeholder values.
 
         Review in Settings shows the result and lists personal details that are not sanitized yet.
-        Review finds email, phone, IBAN, card, US SSN and UK postcode. Not names or addresses.
+        Review finds email, phone, IBAN, card, IP, postcode, BSN, SSN, NI and NHS numbers.
+        Not names or addresses.
         Select Add as secret or Add all to replace them from then on.
         """),
       new HelpSection("Trash", """

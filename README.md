@@ -48,9 +48,11 @@ No manual searching and replacing of every configured secret.
 **Review** in Settings checks the sanitized text for personal details that are not sanitized yet.
 Select **Add as secret** or **Add all** to sanitize them from then on.
 
-Review finds email, phone (US, UK, Dutch, +international), IBAN, card number, US SSN and UK
-postcode. It does not find names or addresses. The **Sanitizer** button replaces saved secrets
-only.
+Review finds email addresses, phone numbers (US, UK, Dutch, +international), IBANs, card numbers,
+IP addresses, Dutch BSNs, US Social Security numbers, UK National Insurance and NHS numbers, and
+UK and Dutch postcodes next to an address word. IBANs, card numbers, BSNs and NHS numbers must
+pass their check digit. It does not find names or addresses. The **Sanitizer** button replaces
+saved secrets only.
 
 The check is a safety aid, not a guarantee. Always review your sanitized content before sharing.
 

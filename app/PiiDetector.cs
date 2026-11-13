@@ -1,5 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
-using PromptFlipper.Pii;
 
 namespace PromptFlipper;
 
@@ -7,66 +8,65 @@ namespace PromptFlipper;
 public sealed record PiiFinding(string Category, string Value);
 
 /// <summary>
-/// Pattern-based detection of structured personal details: each recognizer has patterns with a
-/// base score, context words and optional checksum validation. Names and street addresses are
-/// not detected, because recognizing them needs a language model and the app ships none.
+/// Pattern-based detection of structured personal details. Each recognizer has a pattern and,
+/// where the format has one, a checksum that rules out look-alike numbers. Recognizers whose
+/// format is too common on its own report a match only when a context word is near it. Names
+/// and street addresses are not detected: recognizing them needs a language model.
 /// </summary>
-public static class PiiDetector
+public static partial class PiiDetector
 {
-    /// <summary>
-    /// A result is shown when its final score is at least this value. A weak match is shown only
-    /// when a context word lifts it, because a context word sets the score to at least 0.4.
-    /// </summary>
-    public const double ScoreThreshold = 0.4;
-
-    private const double ContextSimilarityFactor = 0.35;
-    private const double MinScoreWithContext = 0.4;
-    private const int ContextPrefixCount = 5;
-
-    // The farthest Detect looks back from a match for context words.
-    private const int ContextScanLimit = 512;
-
-    private static readonly Dictionary<string, string> Labels = new(StringComparer.Ordinal)
-    {
-        ["CREDIT_CARD"] = "Card number",
-        ["CRYPTO"] = "Crypto wallet",
-        ["DATE_TIME"] = "Date",
-        ["EMAIL_ADDRESS"] = "Email address",
-        ["IBAN_CODE"] = "IBAN",
-        ["IP_ADDRESS"] = "IP address",
-        ["MAC_ADDRESS"] = "MAC address",
-        ["PHONE_NUMBER"] = "Phone number",
-        ["URL"] = "URL",
-        ["UUID"] = "UUID",
-        ["ABA_ROUTING_NUMBER"] = "US bank routing number",
-        ["MEDICAL_LICENSE"] = "US DEA number",
-        ["US_BANK_NUMBER"] = "US bank account number",
-        ["US_DRIVER_LICENSE"] = "US driver's license",
-        ["US_HEALTH_INSURANCE_MEMBER_ID"] = "US health insurance member ID",
-        ["US_PRIOR_AUTHORIZATION_NUMBER"] = "US prior authorization number",
-        ["US_CLAIM_NUMBER"] = "US claim number",
-        ["US_PRESCRIPTION_NUMBER"] = "US prescription number",
-        ["US_REFERRAL_NUMBER"] = "US referral number",
-        ["US_PROVIDER_TAX_ID"] = "US provider tax ID",
-        ["US_ITIN"] = "US ITIN",
-        ["US_MBI"] = "US Medicare number",
-        ["US_NPI"] = "US provider number (NPI)",
-        ["US_PASSPORT"] = "US passport number",
-        ["US_SSN"] = "US Social Security number",
-        ["UK_DRIVING_LICENCE"] = "UK driving licence",
-        ["UK_NHS"] = "UK NHS number",
-        ["UK_NINO"] = "UK National Insurance number",
-        ["UK_PASSPORT"] = "UK passport number",
-        ["UK_POSTCODE"] = "UK postcode",
-        ["UK_VEHICLE_REGISTRATION"] = "UK vehicle registration",
-    };
-
-    /// <summary>The display category of every recognizer, in registry order.</summary>
-    public static IReadOnlyList<string> CoveredCategories { get; } =
-        PiiRegistry.All.Select(recognizer => Labels[recognizer.Entity]).Distinct().ToArray();
+    public const string Email = "Email address";
+    public const string Phone = "Phone number";
+    public const string Iban = "IBAN";
+    public const string Card = "Card number";
+    public const string IpAddress = "IP address";
+    public const string Bsn = "NL BSN";
+    public const string Ssn = "US Social Security number";
+    public const string Nino = "UK National Insurance number";
+    public const string Nhs = "UK NHS number";
+    public const string UkPostcode = "UK postcode";
+    public const string NlPostcode = "NL postcode";
 
     public const string CoverageStatement =
-        "Finds: email, phone, IBAN, card, IDs and more. Not names or addresses.";
+        "Finds: email, phone, IBAN, card, IP, postcode, BSN, SSN, NI, NHS. Not names or addresses.";
+
+    private const int MatchTimeoutMs = 500;
+
+    // How far back from a match the context words are looked for, in words and in characters.
+    private const int ContextWords = 5;
+    private const int ContextScanLimit = 512;
+
+    private static readonly string[] PostcodeContext =
+        ["postcode", "zip", "address", "adres", "road", "street", "straat", "lane", "avenue", "laan", "weg", "plein"];
+
+    // Measure returns how much of the match is accepted, or 0 to reject it. Without one the whole
+    // match is accepted.
+    private sealed record Recognizer(
+        string Category, Regex Pattern, Func<string, int>? Measure = null, string[]? Context = null);
+
+    private static Func<string, int> Whole(Func<string, bool> isValid) => value => isValid(value) ? value.Length : 0;
+
+    // Listed in priority order: when two matches overlap, the one listed first is kept.
+    private static readonly Recognizer[] Recognizers =
+    [
+        new(Iban, IbanPattern(), MeasureIban),
+        new(Card, CardPattern(), Whole(PassesLuhn)),
+        new(Email, EmailPattern()),
+        new(Nhs, NhsPattern(), Whole(IsValidNhs), ["nhs"]),
+        new(Bsn, BsnPattern(), Whole(IsValidBsn)),
+        new(Ssn, SsnPattern()),
+        new(Nino, NinoPattern()),
+        new(IpAddress, Ipv4Pattern()),
+        new(IpAddress, Ipv6Pattern(), Whole(IsIpv6)),
+        new(Phone, NanpPhonePattern(), Whole(HasPhoneDigitCount)),
+        new(Phone, InternationalPhonePattern(), Whole(HasPhoneDigitCount)),
+        new(Phone, NationalPhonePattern(), Whole(HasPhoneDigitCount)),
+        new(UkPostcode, UkPostcodePattern(), Context: PostcodeContext),
+        new(NlPostcode, NlPostcodePattern(), Context: PostcodeContext),
+    ];
+
+    public static IReadOnlyList<string> CoveredCategories { get; } =
+        Recognizers.Select(recognizer => recognizer.Category).Distinct().ToArray();
 
     public static IReadOnlyList<PiiFinding> Detect(string? text)
     {
@@ -75,67 +75,20 @@ public static class PiiDetector
             return Array.Empty<PiiFinding>();
         }
 
-        var results = new List<PiiResult>();
-        foreach (var recognizer in PiiRegistry.All)
-        {
-            results.AddRange(recognizer.Analyze is { } analyze ? analyze(text, recognizer) : AnalyzePatterns(text, recognizer));
-        }
-
-        var order = PiiRegistry.All.Select((recognizer, index) => (recognizer, index))
-            .ToDictionary(pair => pair.recognizer, pair => pair.index);
-        var scored = results
-            .Select(result => result with { Score = WithContext(text, result) })
-            .Where(result => result.Score >= ScoreThreshold)
-            // Review lists one category per span: the highest score wins, then the longer
-            // match, then the recognizer listed first.
-            .OrderByDescending(result => result.Score)
-            .ThenByDescending(result => result.Length)
-            .ThenBy(result => order[result.Recognizer])
-            .ThenBy(result => result.Start);
-
-        var accepted = new List<PiiResult>();
-        foreach (var result in scored)
-        {
-            if (!accepted.Any(kept => result.Start < kept.End && kept.Start < result.End))
-            {
-                accepted.Add(result);
-            }
-        }
-
-        return accepted
-            .OrderBy(result => result.Start)
-            .Select(result => new PiiFinding(Labels[result.Recognizer.Entity], text[result.Start..result.End]))
-            .ToList();
-    }
-
-    /// <summary>Runs each pattern, applies validation, and drops matches scored 0.</summary>
-    internal static IEnumerable<PiiResult> AnalyzePatterns(string text, PiiRecognizer recognizer)
-    {
-        var results = new List<PiiResult>();
-        for (var i = 0; i < recognizer.Patterns.Length; i++)
+        var accepted = new List<(int Start, int End, string Category)>();
+        foreach (var recognizer in Recognizers)
         {
             try
             {
-                foreach (Match match in recognizer.Regexes[i].Matches(text))
+                foreach (Match match in recognizer.Pattern.Matches(text))
                 {
-                    if (match.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    var score = recognizer.Patterns[i].Score;
-                    if (recognizer.Validate?.Invoke(match.Value) is { } valid)
-                    {
-                        score = valid ? 1.0 : 0;
-                    }
-                    if (recognizer.Invalidate?.Invoke(match.Value) == true)
-                    {
-                        score = 0;
-                    }
-                    if (score > 0)
-                    {
-                        results.Add(new PiiResult(recognizer, match.Index, match.Index + match.Length, score));
-                    }
+                    var start = match.Index;
+                    var length = recognizer.Measure is { } measure ? measure(match.Value) : match.Length;
+                    if (length == 0) continue;
+                    var end = start + length;
+                    if (recognizer.Context is { } context && !HasContextWord(text, start, context)) continue;
+                    if (accepted.Any(span => start < span.End && span.Start < end)) continue;
+                    accepted.Add((start, end, recognizer.Category));
                 }
             }
             catch (RegexMatchTimeoutException)
@@ -143,103 +96,164 @@ public static class PiiDetector
                 // A pattern that times out is skipped; the results of the others stand.
             }
         }
-        return RemoveDuplicates(results);
+
+        return accepted
+            .OrderBy(span => span.Start)
+            .Select(span => new PiiFinding(span.Category, text[span.Start..span.End]))
+            .ToList();
     }
 
-    /// <summary>
-    /// Drops a result when a result of the same entity contains it with an equal or higher score.
-    /// </summary>
-    internal static List<PiiResult> RemoveDuplicates(IEnumerable<PiiResult> results)
+    // Greedy: the country's length is cut from the front of the match in MeasureIban.
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex IbanPattern();
+
+    [GeneratedRegex(@"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex CardPattern();
+
+    [GeneratedRegex(@"(?<![\w.%+-])[\w.%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}(?![\w-])", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex EmailPattern();
+
+    [GeneratedRegex(@"(?<!\d)\d{3}[ -]?\d{3}[ -]?\d{4}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex NhsPattern();
+
+    [GeneratedRegex(@"(?<![\d.])(?:\d{9}|\d{4}\.\d{2}\.\d{3})(?![\d.]\d|\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex BsnPattern();
+
+    [GeneratedRegex(@"(?<!\d)(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex SsnPattern();
+
+    // HMRC: no D, F, I, Q, U or V as a prefix letter, no O as the second, and the prefixes
+    // BG, GB, KN, NK, NT, TN and ZZ are not allocated.
+    [GeneratedRegex(@"(?<![A-Za-z0-9])(?!BG|GB|KN|NK|NT|TN|ZZ)[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?\d{2} ?\d{2} ?\d{2} ?[A-D](?![A-Za-z0-9])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, MatchTimeoutMs)]
+    private static partial Regex NinoPattern();
+
+    [GeneratedRegex(@"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d|\.\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex Ipv4Pattern();
+
+    [GeneratedRegex(@"(?<![\w:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:])", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex Ipv6Pattern();
+
+    [GeneratedRegex(@"(?<![\d+])(?:\+1[ .-]?)?(?:\(\d{3}\)|\d{3})[ .-]?\d{3}[ .-]?\d{4}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex NanpPhonePattern();
+
+    [GeneratedRegex(@"(?<![\w+])\+\d{1,3}(?:[ .-]?\(0\))?(?:[ .-]?\d){6,13}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex InternationalPhonePattern();
+
+    // National numbers with a trunk 0: 10 digits in the Netherlands, 11 in the UK.
+    [GeneratedRegex(@"(?<![\w+])0\d(?:[ .-]?\d){8,9}(?!\d)", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex NationalPhonePattern();
+
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}(?![A-Za-z0-9])", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex UkPostcodePattern();
+
+    // PostNL: four digits without a leading zero, then two letters other than SA, SD or SS.
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[1-9]\d{3} ?(?!SA|SD|SS)[A-Z]{2}(?![A-Za-z0-9])", RegexOptions.None, MatchTimeoutMs)]
+    private static partial Regex NlPostcodePattern();
+
+    // Total IBAN length per country, from the SWIFT IBAN registry.
+    private static readonly Dictionary<string, int> IbanLengths = new(StringComparer.Ordinal)
     {
-        var kept = new List<PiiResult>();
-        foreach (var group in results.Distinct().GroupBy(result => result.Recognizer.Entity))
-        {
-            var active = new List<PiiResult>();
-            foreach (var result in group.OrderBy(r => r.Start).ThenByDescending(r => r.Length).ThenByDescending(r => r.Score))
-            {
-                if (result.Score == 0)
-                {
-                    continue;
-                }
-                active.RemoveAll(other => other.End < result.Start);
-                if (active.Any(other => other.Start <= result.Start && result.End <= other.End && result.Score <= other.Score))
-                {
-                    continue;
-                }
-                kept.Add(result);
-                active.Add(result);
-            }
-        }
-        return kept;
-    }
+        ["AD"] = 24, ["AE"] = 23, ["AL"] = 28, ["AT"] = 20, ["AZ"] = 28, ["BA"] = 20, ["BE"] = 16,
+        ["BG"] = 22, ["BH"] = 22, ["BR"] = 29, ["BY"] = 28, ["CH"] = 21, ["CR"] = 22, ["CY"] = 28,
+        ["CZ"] = 24, ["DE"] = 22, ["DK"] = 18, ["DO"] = 28, ["EE"] = 20, ["EG"] = 29, ["ES"] = 24,
+        ["FI"] = 18, ["FO"] = 18, ["FR"] = 27, ["GB"] = 22, ["GE"] = 22, ["GI"] = 23, ["GL"] = 18,
+        ["GR"] = 27, ["GT"] = 28, ["HR"] = 21, ["HU"] = 28, ["IE"] = 22, ["IL"] = 23, ["IQ"] = 23,
+        ["IS"] = 26, ["IT"] = 27, ["JO"] = 30, ["KW"] = 30, ["KZ"] = 20, ["LB"] = 28, ["LC"] = 32,
+        ["LI"] = 21, ["LT"] = 20, ["LU"] = 20, ["LV"] = 21, ["MC"] = 27, ["MD"] = 24, ["ME"] = 22,
+        ["MK"] = 19, ["MR"] = 27, ["MT"] = 31, ["MU"] = 30, ["NL"] = 18, ["NO"] = 15, ["PK"] = 24,
+        ["PL"] = 28, ["PS"] = 29, ["PT"] = 25, ["QA"] = 29, ["RO"] = 24, ["RS"] = 22, ["SA"] = 24,
+        ["SC"] = 31, ["SE"] = 24, ["SI"] = 19, ["SK"] = 24, ["SM"] = 27, ["ST"] = 25, ["SV"] = 28,
+        ["TL"] = 23, ["TN"] = 24, ["TR"] = 26, ["UA"] = 29, ["VA"] = 22, ["VG"] = 24, ["XK"] = 20
+    };
 
-    /// <summary>
-    /// The word that holds the match start and the 5 words before it are compared with the
-    /// recognizer's context words, ignoring case. A context word may match inside a longer word,
-    /// so "card" matches "cards" and "creditcard". A match adds 0.35, with a floor of 0.4.
-    /// </summary>
-    private static double WithContext(string text, PiiResult result)
+    // Takes the country's length of characters from the front of the match, which must not run
+    // on into a further letter or digit, then applies the ISO 13616 mod-97 check.
+    private static int MeasureIban(string value)
     {
-        var context = result.Recognizer.Context;
-        if (context.Length == 0 || !HasContextWord(text, result.Start, context))
+        if (!IbanLengths.TryGetValue(value[..2], out var expected)) return 0;
+        var count = 0;
+        var end = 0;
+        while (end < value.Length && count < expected)
         {
-            return result.Score;
+            if (value[end] != ' ') count++;
+            end++;
         }
-        return Math.Min(1.0, Math.Max(result.Score + ContextSimilarityFactor, MinScoreWithContext));
+        if (count < expected || (end < value.Length && value[end] != ' ')) return 0;
+        return IsValidIban(value[..end].Replace(" ", "", StringComparison.Ordinal)) ? end : 0;
     }
 
+    private static bool IsValidIban(string iban)
+    {
+        var remainder = 0;
+        foreach (var c in iban[4..] + iban[..4])
+        {
+            var digits = char.IsAsciiDigit(c) ? c - '0' : c - 'A' + 10;
+            remainder = digits < 10 ? (remainder * 10 + digits) % 97 : (remainder * 100 + digits) % 97;
+        }
+        return remainder == 1;
+    }
+
+    private static bool PassesLuhn(string value)
+    {
+        var sum = 0;
+        var doubleIt = false;
+        for (var i = value.Length - 1; i >= 0; i--)
+        {
+            if (!char.IsAsciiDigit(value[i])) continue;
+            var digit = value[i] - '0';
+            if (doubleIt && (digit *= 2) > 9) digit -= 9;
+            sum += digit;
+            doubleIt = !doubleIt;
+        }
+        return sum % 10 == 0;
+    }
+
+    // NHS England: weights 10 down to 2 over the first nine digits; 11 minus the remainder
+    // modulo 11 is the check digit, 11 counts as 0 and 10 is never issued.
+    private static bool IsValidNhs(string value)
+    {
+        var digits = value.Where(char.IsAsciiDigit).Select(c => c - '0').ToArray();
+        var sum = 0;
+        for (var i = 0; i < 9; i++) sum += digits[i] * (10 - i);
+        var check = 11 - sum % 11;
+        if (check == 11) check = 0;
+        return check != 10 && check == digits[9];
+    }
+
+    // Dutch elfproef for the BSN: weights 9 down to 2, the last digit weighted -1, and the sum
+    // divisible by 11.
+    private static bool IsValidBsn(string value)
+    {
+        var digits = value.Where(char.IsAsciiDigit).Select(c => c - '0').ToArray();
+        if (digits.All(d => d == 0)) return false;
+        var sum = -digits[8];
+        for (var i = 0; i < 8; i++) sum += digits[i] * (9 - i);
+        return sum % 11 == 0;
+    }
+
+    private static bool IsIpv6(string value) =>
+        value.Any(char.IsAsciiHexDigit) &&
+        IPAddress.TryParse(value, out var address) &&
+        address.AddressFamily == AddressFamily.InterNetworkV6;
+
+    private static bool HasPhoneDigitCount(string value) => value.Count(char.IsAsciiDigit) is >= 8 and <= 15;
+
+    // The word that holds the match start and the words before it are compared with the context
+    // words, ignoring case. A context word may match inside a longer word, so "road" matches
+    // "roads". The scan stays within a fixed distance of the match.
     private static bool HasContextWord(string text, int start, string[] context)
     {
-        // The first word that ends after the match start: the word holding it, or the next one.
-        var position = start;
-        while (position > 0 && char.IsLetterOrDigit(text[position - 1]))
-        {
-            position--;
-        }
-        var limit = Math.Min(text.Length, start + ContextScanLimit);
-        while (position < limit && !char.IsLetterOrDigit(text[position]))
-        {
-            position++;
-        }
-
-        var words = new List<string>(ContextPrefixCount + 1);
-        if (position < limit)
-        {
-            var end = position;
-            while (end < text.Length && char.IsLetterOrDigit(text[end]))
-            {
-                end++;
-            }
-            words.Add(text[position..end].ToLowerInvariant());
-        }
-
+        var words = new List<string>(ContextWords + 1);
+        var cursor = start;
+        while (cursor < text.Length && char.IsLetterOrDigit(text[cursor])) cursor++;
         var floor = Math.Max(0, start - ContextScanLimit);
-        var cursor = Math.Min(position, start);
-        while (words.Count <= ContextPrefixCount && cursor > floor)
+        while (words.Count <= ContextWords && cursor > floor)
         {
-            while (cursor > floor && !char.IsLetterOrDigit(text[cursor - 1]))
-            {
-                cursor--;
-            }
+            while (cursor > floor && !char.IsLetterOrDigit(text[cursor - 1])) cursor--;
             var wordEnd = cursor;
-            while (cursor > floor && char.IsLetterOrDigit(text[cursor - 1]))
-            {
-                cursor--;
-            }
-            if (wordEnd > cursor)
-            {
-                words.Add(text[cursor..wordEnd].ToLowerInvariant());
-            }
+            while (cursor > floor && char.IsLetterOrDigit(text[cursor - 1])) cursor--;
+            if (wordEnd > cursor) words.Add(text[cursor..wordEnd].ToLowerInvariant());
         }
-
-        foreach (var word in context)
-        {
-            var lowered = word.ToLowerInvariant();
-            if (words.Any(candidate => candidate.Contains(lowered, StringComparison.Ordinal)))
-            {
-                return true;
-            }
-        }
-        return false;
+        return context.Any(word => words.Any(candidate => candidate.Contains(word, StringComparison.Ordinal)));
     }
 }
