@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+- Settings shows each secret value in full, with the placeholder name beside it.
+- Hide all in Settings masks secret values and personal details on screen.
+- Sort A-Z in Settings orders the secret list by value.
+- Review always lists personal details that are not sanitized, with Add as secret and Add all.
+- Help search highlights the matches in a topic.
+- About shows the author, the source repository, the Microsoft Store listing and support links.
+
 ## 1.0.1
 
 - Search Help topics from the Help window.
