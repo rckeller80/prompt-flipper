@@ -42,6 +42,8 @@
     <EmbeddedResource Include="PromptFlipper.ico" LogicalName="PromptFlipper.ico" />
     <!-- One parameter file per search site; the control template is Search/SearchProfile.cs. -->
     <EmbeddedResource Include="Search\*.json" LogicalName="Search.%(Filename).json" />
+    <!-- Public suffixes for the email check in personal-details detection. -->
+    <EmbeddedResource Include="Pii\public-suffix-icann.txt" LogicalName="Pii.public-suffix-icann.txt" />
     <!-- Sanitize and De-Sanitize button and comic success artwork. The 512 masters are not shipped. -->
     <EmbeddedResource Include="..\artifacts\assets\quick_icons\*sanitize_button_*.png;..\artifacts\assets\quick_icons\*sanitized_message_*.png"
       Exclude="..\artifacts\assets\quick_icons\*_512.png" LogicalName="QuickIcons.%(Filename).png" />
@@ -61,6 +63,11 @@
     <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-32x32.png" LogicalName="Toolbar.32.Support.png" />
     <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-48x48.png" LogicalName="Toolbar.48.Support.png" />
     <EmbeddedResource Include="..\artifacts\IconPack\coffee_app_icons\coffee-heart-64x64.png" LogicalName="Toolbar.64.Support.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Phone number detection validates numbers against each region's numbering plan. -->
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.43" />
   </ItemGroup>
 
 </Project>

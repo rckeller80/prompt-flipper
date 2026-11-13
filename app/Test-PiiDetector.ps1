@@ -15,11 +15,14 @@ Execution platform: Windows; PowerShell: PowerShell 7.4 or later, which runs on 
 .PARAMETER AssemblyPath
 Specifies the built PromptFlipper.dll. The default is the Debug build output of the sibling project.
 
+.PARAMETER TimingKilobytes
+Specifies the size of the card that Review time is measured on. 0 skips the measurement.
+
 .EXAMPLE
 pwsh -NoProfile -File projects/prompt-flipper/app/Test-PiiDetector.ps1
 #>
 [CmdletBinding()]
-param([string]$AssemblyPath)
+param([string]$AssemblyPath, [int]$TimingKilobytes = 50)
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($AssemblyPath)) {
@@ -76,6 +79,23 @@ foreach ($value in 'W6 0XX', '020 7946 0123', 'sarah.collins@mail.example', 'GB0
     if (-not ($demoFindings | Where-Object Value -eq $value)) { $failures.Add("Demo card: '$value' not detected") }
 }
 if ($demoFindings.Count -ne 4) { $failures.Add("Demo card: expected 4 findings, got $($demoFindings.Count)") }
+
+if ($TimingKilobytes -gt 0) {
+    # Review time: the demo card repeated to the requested size, one warm-up run, then the median of 21 runs.
+    $builder = [Text.StringBuilder]::new()
+    while ($builder.Length -lt $TimingKilobytes * 1024) { [void]$builder.Append($demo).Append("`r`n") }
+    $card = $builder.ToString()
+    $detect = $detector.GetMethod('Detect')
+    $warm = @($detect.Invoke($null, @($card)))
+    $runs = foreach ($i in 1..21) {
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        [void]$detect.Invoke($null, @($card))
+        $watch.Stop()
+        $watch.Elapsed.TotalMilliseconds
+    }
+    $median = ($runs | Sort-Object)[10]
+    Write-Output ('Review time: {0:N1} ms median of 21 runs, {1:N0} characters, {2} findings.' -f $median, $card.Length, $warm.Count)
+}
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Output "FAIL: $_" }
