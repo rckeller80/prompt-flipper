@@ -133,7 +133,7 @@ public sealed class QuickSanitizeTests
             Assert.Equal(0, editor.SelectionLength);
             Assert.Equal(OriginalCard, File.ReadAllText(path));
             var status = (ToolStripStatusLabel)mainType.GetField("fileStatusLabel", Instance)!.GetValue(form)!;
-            Assert.Equal("Sanitized and copied", status.Text);
+            Assert.Equal("Sanitized and copied. " + PromptFlipper.Sanitizer.QuickSanitizeScope, status.Text);
             Assert.DoesNotContain(Application.OpenForms.Cast<Form>(), window => window.GetType() == dialogType);
 
             // The separate setup button still opens the configuration dialog.

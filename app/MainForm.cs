@@ -582,6 +582,8 @@ internal sealed class MainForm : Form
     }, quickSize);
     sanitizeArtwork = LoadQuickIcon("sanitize_button", ToolbarArtwork.QuickIconSize);
     deSanitizeArtwork = LoadQuickIcon("de_sanitize_button", ToolbarArtwork.QuickIconSize);
+    // UI Automation reads a control's help text from this event, not from AccessibleDescription.
+    sanitizeToggle.QueryAccessibilityHelp += (_, e) => e.HelpString = sanitizeToggle.AccessibleDescription;
     UpdateSanitizeToggle();
 
     var cardNamePanel = new Panel
@@ -637,7 +639,10 @@ internal sealed class MainForm : Form
     var name = sanitized ? "De-Sanitize" : "Sanitizer";
     sanitizeToggle.Image = sanitized ? deSanitizeArtwork : sanitizeArtwork;
     sanitizeToggle.AccessibleName = name;
-    chromeToolTip.SetToolTip(sanitizeToggle, name);
+    // Quick Sanitize runs no personal details check; the button says so before it is used.
+    var help = sanitized ? null : PromptFlipper.Sanitizer.QuickSanitizeScope;
+    sanitizeToggle.AccessibleDescription = help;
+    chromeToolTip.SetToolTip(sanitizeToggle, help is null ? name : $"{name}: {help}");
   }
 
   private void ConfigureChromeButton(

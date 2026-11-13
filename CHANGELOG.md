@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Review finds UK, Dutch and international phone numbers, IBANs and UK postcodes.
+- Review reports a card number only when it passes the Luhn check.
+- Review never reports an IBAN as a card number or a phone number.
+- Settings states which personal details Review finds. Review does not find names or street addresses.
+- The Sanitizer button states that it replaces saved secrets only and does not check for personal details.
+
 ## 1.0.2
 
 - Settings shows each secret value in full, with the placeholder name beside it.

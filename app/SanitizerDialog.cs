@@ -196,7 +196,7 @@ internal sealed class SanitizerDialog : Form
     var detailPanel = new TableLayoutPanel
     {
       ColumnCount = 1,
-      RowCount = 4,
+      RowCount = 5,
       Dock = DockStyle.Fill,
       Margin = Padding.Empty
     };
@@ -205,6 +205,7 @@ internal sealed class SanitizerDialog : Form
       detailPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
     detailPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+    detailPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     detailPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     detailPanel.Controls.Add(new Label { AutoSize = true, Text = "&Add / Edit" }, 0, 0);
     detailPanel.Controls.Add(valueEditorFrame, 0, 1);
@@ -219,6 +220,10 @@ internal sealed class SanitizerDialog : Form
     reviewText.MinimumSize = new Size(0, Font.Height * 4);
     detailPanel.Controls.Add(FrameField(reviewText), 0, 2);
     detailPanel.Controls.Add(findingsPanel, 0, 3);
+    // States what Review can find, so an empty result is not read as "no personal details".
+    var coverageNote = new Label { Text = PiiDetector.CoverageStatement };
+    WrapStatus(coverageNote, detailPanel);
+    detailPanel.Controls.Add(coverageNote, 0, 4);
 
     // Rule actions stay together immediately below their placeholder list.
     var ruleActionsRow = new TableLayoutPanel

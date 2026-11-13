@@ -111,9 +111,11 @@ internal sealed class HelpWindow : Form
         Paste card contents into any AI tool.
         """),
       new HelpSection("Sanitizer", """
-        Sanitizer replaces your saved secrets with placeholders. Don't forget to review the result.
+        Sanitizer replaces your saved secrets with placeholders. It does not check personal details.
         De-Sanitize puts back original placeholder values.
+
         Review in Settings shows the result and lists personal details that are not sanitized yet.
+        Review finds email, phone, IBAN, card, US SSN and UK postcode. Not names or addresses.
         Select Add as secret or Add all to replace them from then on.
         """),
       new HelpSection("Trash", """
