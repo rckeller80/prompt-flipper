@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "name": "Prompt Flipper"
+  },
+  "trigger": {
+    "tagPrefix": "v"
+  },
+  "version": {
+    "sourceFile": "app/PromptFlipper.csproj",
+    "pattern": "<Version>(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)</Version>"
+  },
+  "build": {
+    "runsOn": "windows-latest",
+    "timeoutMinutes": 30,
+    "steps": [
+      {
+        "name": "Build the executable and the Store package",
+        "run": "$csproj = Get-Content -Raw -LiteralPath 'app/PromptFlipper.csproj'\n$match = [regex]::Match($csproj, '<StorePackageVersion>(?<v>[0-9]+\\.[0-9]+\\.[0-9]+\\.0)</StorePackageVersion>')\nif (-not $match.Success) { throw 'No StorePackageVersion in app/PromptFlipper.csproj' }\n./app/Build-PromptFlipperPackage.ps1 -StoreUpload -IdentityName 'RCKeller.PromptFlipper' -Publisher 'CN=D2F3AF1F-4EDD-4F12-88AA-035D5D68B4DF' -PublisherDisplayName 'RC Keller' -PackageVersion $match.Groups['v'].Value"
+      }
+    ],
+    "artifacts": [
+      { "name": "portable", "path": "app/publish/PromptFlipper.exe" },
+      { "name": "msix", "path": "app/package-out/*_store.msix" }
+    ]
+  },
+  "targets": [
+    {
+      "type": "github-release",
+      "assets": ["portable", "msix"]
+    },
+    {
+      "type": "msstore-msix",
+      "productId": "9PJSW6KZ5F63",
+      "packageIdentityName": "RCKeller.PromptFlipper",
+      "package": "msix",
+      "noCommit": true,
+      "secrets": {
+        "tenantId": "STORE_TENANT_ID",
+        "sellerId": "STORE_SELLER_ID",
+        "clientId": "STORE_CLIENT_ID",
+        "clientSecret": "STORE_CLIENT_SECRET"
+      }
+    }
+  ]
+}

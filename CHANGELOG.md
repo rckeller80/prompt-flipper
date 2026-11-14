@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.3
 
 - Review finds UK, Dutch and international phone numbers, IBANs, IP addresses, Dutch BSNs, UK
   National Insurance and NHS numbers, and UK and Dutch postcodes.
