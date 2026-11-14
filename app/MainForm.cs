@@ -380,7 +380,7 @@ internal sealed class MainForm : Form
       Alignment = ToolStripItemAlignment.Right,
       DisplayStyle = ToolStripItemDisplayStyle.Image,
       ImageScaling = ToolStripItemImageScaling.None,
-      ToolTipText = "Support"
+      ToolTipText = "Buy me a coffee"
     };
 
     var toolbar = new ToolStrip
