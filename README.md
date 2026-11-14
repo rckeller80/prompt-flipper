@@ -8,8 +8,12 @@ into an AI tool.
 
 Keep your secrets local, your prompts reusable, and your information under your control.
 
-**[Download free from Microsoft Store](https://apps.microsoft.com/detail/9PJSW6KZ5F63)** |
+[![Get it from Microsoft Store][store-badge]][store]
+
 [Portable Windows executable](https://github.com/rckeller80/prompt-flipper/releases/latest/download/PromptFlipper.exe)
+
+[store-badge]: https://get.microsoft.com/images/en-us%20dark.svg
+[store]: https://apps.microsoft.com/detail/9pjsw6kz5f63?mode=direct
 
 ![Prompt Flipper application](docs/prompt-flipper.png)
 
